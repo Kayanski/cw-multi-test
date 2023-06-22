@@ -487,9 +487,9 @@ dependencies = [
 
 [[package]]
 name = "cosmwasm-schema"
-version = "1.2.6"
+version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "407aca6f1671a08b60db8167f03bb7cb6b2378f0ddd9a030367b66ba33c2fd41"
+checksum = "230e5d1cefae5331db8934763c81b9c871db6a2cd899056a5694fa71d292c815"
 dependencies = [
  "cosmwasm-schema-derive",
  "schemars",
@@ -500,9 +500,9 @@ dependencies = [
 
 [[package]]
 name = "cosmwasm-schema-derive"
-version = "1.2.6"
+version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d1e00b8fd27ff923c10303023626358e23a6f9079f8ebec23a8b4b0bfcd4b3"
+checksum = "43dadf7c23406cb28079d69e6cb922c9c29b9157b0fe887e3b79c783b7d4bcb8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -755,6 +755,8 @@ dependencies = [
  "anyhow",
  "base64 0.21.2",
  "bincode",
+ "cosmrs",
+ "cosmwasm-crypto",
  "cosmwasm-std",
  "cosmwasm-vm",
  "cw-orch",
@@ -762,16 +764,22 @@ dependencies = [
  "cw-utils",
  "cw20",
  "derivative",
+ "generic_static",
  "ibc-chain-registry",
  "ibc-relayer-types",
  "itertools",
  "k256 0.11.6",
+ "lazy_static",
+ "num-bigint",
+ "num-traits",
+ "once_cell",
  "prost 0.9.0",
  "schemars",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "tonic",
 ]
 
 [[package]]
@@ -796,7 +804,7 @@ dependencies = [
 [[package]]
 name = "cw-orch"
 version = "0.13.0"
-source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#e9e86bac64be3409f9b733db58df4a4ced420d7d"
+source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#55ec25dda71b77e0a7eefcbadd221884c81acc24"
 dependencies = [
  "anyhow",
  "base16",
@@ -835,7 +843,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-contract-derive"
 version = "0.13.0"
-source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#e9e86bac64be3409f9b733db58df4a4ced420d7d"
+source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#55ec25dda71b77e0a7eefcbadd221884c81acc24"
 dependencies = [
  "convert_case",
  "log",
@@ -846,7 +854,7 @@ dependencies = [
 [[package]]
 name = "cw-orch-fns-derive"
 version = "0.13.0"
-source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#e9e86bac64be3409f9b733db58df4a4ced420d7d"
+source = "git+https://github.com/AbstractSDK/cw-orchestrator.git?branch=feature/local_executor#55ec25dda71b77e0a7eefcbadd221884c81acc24"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1520,6 +1528,15 @@ dependencies = [
  "typenum",
  "version_check",
  "zeroize",
+]
+
+[[package]]
+name = "generic_static"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28ccff179d8070317671db09aee6d20affc26e88c5394714553b04f509b43a60"
+dependencies = [
+ "once_cell",
 ]
 
 [[package]]

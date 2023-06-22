@@ -158,11 +158,11 @@ impl Module for DistantBankKeeper {
     type QueryT = BankQuery;
     type SudoT = BankSudo;
 
-    fn execute(
+    fn execute<ExecC, QueryC>(
         &self,
         _api: &dyn Api,
         storage: &mut dyn Storage,
-        _router: &dyn CosmosRouter,
+        _router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
         _block: &BlockInfo,
         sender: Addr,
         msg: BankMsg,
@@ -192,11 +192,11 @@ impl Module for DistantBankKeeper {
         }
     }
 
-    fn sudo(
+    fn sudo<ExecC, QueryC>(
         &self,
         api: &dyn Api,
         storage: &mut dyn Storage,
-        _router: &dyn CosmosRouter,
+        _router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
         _block: &BlockInfo,
         msg: BankSudo,
     ) -> AnyResult<AppResponse> {

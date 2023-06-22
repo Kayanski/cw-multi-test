@@ -5,12 +5,13 @@ use cosmwasm_std::Storage;
 
 use cosmwasm_std::from_binary;
 use ibc_chain_registry::chain::ChainData;
-use serde::Deserialize;
+
+use serde::de::DeserializeOwned;
 use std::process::Command;
 use crate::wasm_emulation::input::InstanceArguments;
 use crate::wasm_emulation::output::WasmRunnerOutput;
 use cosmwasm_std::to_binary;
-use cosmwasm_std::CustomMsg;
+
 
 use std::collections::HashSet;
 use cosmwasm_vm::internals::check_wasm;
@@ -29,7 +30,7 @@ use super::input::QueryArgs;
 use super::input::WasmFunction;
 use super::output::WasmOutput;
 
-pub fn run_contract(args: InstanceArguments) -> AnyResult<WasmRunnerOutput<Empty>>{
+pub fn run_contract<QueryC: DeserializeOwned>(args: InstanceArguments) -> AnyResult<WasmRunnerOutput<QueryC>>{
 
     let serialized_args = to_binary(&args).unwrap().to_base64();
 
@@ -47,7 +48,7 @@ pub fn run_contract(args: InstanceArguments) -> AnyResult<WasmRunnerOutput<Empty
     if binary_stdout.is_err() || binary_stdout.as_ref().unwrap().is_err(){
         panic!("Err when calling contract, {:?}", result)
     }
-    let decoded_result: WasmRunnerOutput<Empty> = binary_stdout??;
+    let decoded_result: WasmRunnerOutput<QueryC> = binary_stdout??;
 
     Ok(decoded_result)
 }
@@ -84,15 +85,18 @@ impl WasmContract{
     }
 }
 
-impl Contract for WasmContract
+impl<ExecC, QueryC> Contract<ExecC, QueryC> for WasmContract
+where
+    ExecC: Clone + std::fmt::Debug + PartialEq + JsonSchema + DeserializeOwned,
+    QueryC: CustomQuery,
 {
     fn execute(
         &self,
-        deps: DepsMut<Empty>,
+        deps: DepsMut<QueryC>,
         env: Env,
         info: MessageInfo,
         msg: Vec<u8>,
-    ) -> AnyResult<Response<Empty>> {
+    ) -> AnyResult<Response<ExecC>> {
 
         // We start by building the dependencies we will pass through the wasm executer
         let execute_args = InstanceArguments{
@@ -119,11 +123,11 @@ impl Contract for WasmContract
 
     fn instantiate(
         &self,
-        deps: DepsMut<Empty>,
+        deps: DepsMut<QueryC>,
         env: Env,
         info: MessageInfo,
         msg: Vec<u8>,
-    ) -> AnyResult<Response<Empty>> {
+    ) -> AnyResult<Response<ExecC>> {
         // We start by building the dependencies we will pass through the wasm executer
         let instantiate_arguments = InstanceArguments{
             address: env.contract.address.to_string(),
@@ -146,7 +150,7 @@ impl Contract for WasmContract
         }
     }
 
-    fn query(&self, deps: Deps<Empty>, env: Env, msg: Vec<u8>) -> AnyResult<Binary> {
+    fn query(&self, deps: Deps<QueryC>, env: Env, msg: Vec<u8>) -> AnyResult<Binary> {
         // We start by building the dependencies we will pass through the wasm executer
         let query_arguments = InstanceArguments{
             address: env.contract.address.to_string(),
@@ -167,18 +171,18 @@ impl Contract for WasmContract
     }
 
     // this returns an error if the contract doesn't implement sudo
-    fn sudo(&self, _deps: DepsMut<Empty>, _env: Env, _msg: Vec<u8>) -> AnyResult<Response<Empty>> {
+    fn sudo(&self, _deps: DepsMut<QueryC>, _env: Env, _msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
 
         panic!("Not Implemted")
     }
 
     // this returns an error if the contract doesn't implement reply
-    fn reply(&self, _deps: DepsMut<Empty>, _env: Env, _reply_data: Reply) -> AnyResult<Response<Empty>> {
+    fn reply(&self, _deps: DepsMut<QueryC>, _env: Env, _reply_data: Reply) -> AnyResult<Response<ExecC>> {
         panic!("Not Implemted")
     }
 
     // this returns an error if the contract doesn't implement migrate
-    fn migrate(&self, _deps: DepsMut<Empty>, _env: Env, _msg: Vec<u8>) -> AnyResult<Response<Empty>> {
+    fn migrate(&self, _deps: DepsMut<QueryC>, _env: Env, _msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
         panic!("Not Implemted")
     }
 }

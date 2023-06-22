@@ -96,10 +96,10 @@ pub trait Wasm<ExecC, QueryC> {
     ) -> AnyResult<AppResponse>;
 }
 
-pub struct WasmKeeper<ExecC, QueryC> {
+pub struct WasmKeeper<ExecC: 'static, QueryC: 'static> {
     /// code is in-memory lookup that stands in for wasm code
     /// this can only be edited on the WasmRouter, and just read in caches
-    codes: HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>,
+    codes: &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>,
     /// Just markers to make type elision fork when using it as `Wasm` trait
     _p: std::marker::PhantomData<QueryC>,
     generator: Box<dyn AddressGenerator>,
@@ -123,16 +123,6 @@ impl AddressGenerator for SimpleAddressGenerator {
             )
             .count();
         Addr::unchecked(format!("contract{}", count))
-    }
-}
-
-impl<ExecC, QueryC> Default for WasmKeeper<ExecC, QueryC> {
-    fn default() -> Self {
-        Self {
-            codes: HashMap::default(),
-            _p: std::marker::PhantomData,
-            generator: Box::new(SimpleAddressGenerator()),
-        }
     }
 }
 
@@ -206,9 +196,13 @@ where
 
 impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     pub fn store_code(&mut self, code: Box<dyn Contract<ExecC, QueryC>>) -> usize {
-        let idx = self.codes.len() + 1;
-        self.codes.insert(idx, code);
+        let idx = self.get_codes().len() + 1;
+        self.get_codes().insert(idx, code);
         idx
+    }
+
+    fn get_codes(&self) -> &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>{
+        self.codes
     }
 
     pub fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
@@ -297,12 +291,16 @@ where
     ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
 {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(codes: &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>) -> Self {
+        Self{
+            codes,
+            _p: std::marker::PhantomData::default(),
+            generator: Box::new(SimpleAddressGenerator())
+        }
     }
 
-    pub fn new_with_custom_address_generator(generator: impl AddressGenerator + 'static) -> Self {
-        let default = Self::default();
+    pub fn new_with_custom_address_generator(codes: &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>, generator: impl AddressGenerator + 'static) -> Self {
+        let default = Self::new(codes);
         Self {
             codes: default.codes,
             _p: default._p,
@@ -507,7 +505,7 @@ where
 
                 // check admin status and update the stored code_id
                 let new_code_id = new_code_id as usize;
-                if !self.codes.contains_key(&new_code_id) {
+                if !self.get_codes().contains_key(&new_code_id) {
                     bail!("Cannot migrate contract to unregistered code id");
                 }
                 let mut data = self.load_contract(storage, &contract_addr)?;
@@ -715,7 +713,7 @@ where
         label: String,
         created: u64,
     ) -> AnyResult<Addr> {
-        if !self.codes.contains_key(&code_id) {
+        if !self.get_codes().contains_key(&code_id) {
             bail!("Cannot init contract with unregistered code id");
         }
 
@@ -853,7 +851,7 @@ where
     {
         let contract = self.load_contract(storage, &address)?;
         let handler = self
-            .codes
+            .get_codes()
             .get(&contract.code_id)
             .ok_or(Error::UnregisteredCodeId(contract.code_id))?;
         let storage = self.contract_storage_readonly(storage, &address);
@@ -882,7 +880,7 @@ where
     {
         let contract = self.load_contract(storage, &address)?;
         let handler = self
-            .codes
+            .get_codes()
             .get(&contract.code_id)
             .ok_or(Error::UnregisteredCodeId(contract.code_id))?;
 
@@ -1126,7 +1124,8 @@ mod test {
     #[test]
     fn can_dump_raw_wasm_state() {
         let api = MockApi::default();
-        let mut keeper = WasmKeeper::<Empty, Empty>::new();
+        let mut codes = HashMap::new();
+        let mut keeper = WasmKeeper::<Empty, Empty>::new(&mut codes);
         let block = mock_env().block;
         let code_id = keeper.store_code(payout::contract());
 
