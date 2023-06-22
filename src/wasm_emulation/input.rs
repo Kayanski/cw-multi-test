@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use cw_orch::daemon::ChainInfo;
 use ibc_chain_registry::chain::Apis;
 use ibc_chain_registry::chain::ChainData;
