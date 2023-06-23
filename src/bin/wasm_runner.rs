@@ -1,4 +1,5 @@
 
+
 use cw_multi_test::wasm_emulation::output::StorageChanges;
 use cw_multi_test::wasm_emulation::storage::DualStorage;
 
@@ -16,12 +17,10 @@ use cosmwasm_vm::testing::MockApi;
 use cw_multi_test::wasm_emulation::output::WasmOutput;
 use cw_multi_test::wasm_emulation::input::{WasmFunction, InstanceArguments};
 use cw_multi_test::wasm_emulation::output::WasmRunnerOutput;
-use cw_orch::prelude::queriers::DaemonQuerier;
-
-use cw_orch::daemon::GrpcChannel;
-use cw_orch::prelude::queriers::CosmWasm;
 
 use tokio::runtime::Runtime;
+
+
 use std::env;
 
 use cosmwasm_vm::Instance;
@@ -39,6 +38,7 @@ const DEFAULT_MEMORY_LIMIT: Option<Size> = Some(Size::mebi(16));
 const DEFAULT_PRINT_DEBUG: bool = true;
 
 pub fn main() -> AnyResult<()>{
+	env_logger::init();
 	// Parsing arguments (serde serialized and base64 encoded, only 1 argument)
 	let args: Vec<_> = env::args().collect();
     if args.len() <= 1 {
@@ -46,19 +46,20 @@ pub fn main() -> AnyResult<()>{
     }
 
     let base64_arg = &args[1];
-    let InstanceArguments {chain, address, function, init_storage } = from_binary(&Binary::from_base64(base64_arg)?)?;
-    let rt = Runtime::new()?;
-	// We create an instance from a code_id, an address, and we run the code in it
-	let channel = rt.block_on(GrpcChannel::connect(&chain.apis.grpc, &chain.chain_id))?;
-	let wasm_querier = CosmWasm::new(channel);
+    let InstanceArguments {contract, function, init_storage } = from_binary(&Binary::from_base64(base64_arg)?)?;
+	let chain = contract.get_chain();
+	let address = function.get_address();
+	let code = contract.get_code()?;
 
-	let code_info = rt.block_on(wasm_querier.contract_info(address.clone()))?;
-	let code = rt.block_on(wasm_querier.code_data(code_info.code_id))?;
+	log::debug!("Calling local contract, address: {}, chain : {:?}", address, chain);
+
+
+	let rt = Runtime::new()?;
 
 	// We create the backend here from outside information;
 	let backend = Backend {
         api: MockApi::default(), // TODO need to change this to validate the addresses ?
-        storage: DualStorage::new(rt, chain, address, Some(init_storage))?,
+        storage: DualStorage::new(rt, chain, address.to_string(), Some(init_storage))?,
         querier: MockQuerier::<Empty>::new(&[])
     };
     let options = InstanceOptions {

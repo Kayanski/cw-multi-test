@@ -6,3 +6,5 @@ pub mod bank;
 
 pub mod channel;
 pub mod contract;
+
+pub mod wasm;

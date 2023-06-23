@@ -1,3 +1,4 @@
+use cosmwasm_std::Addr;
 use cw_orch::daemon::ChainInfo;
 use ibc_chain_registry::chain::Apis;
 use ibc_chain_registry::chain::ChainData;
@@ -5,8 +6,12 @@ use cosmwasm_std::{Env, MessageInfo, Reply};
 use serde::{Serialize, Deserialize};
 use ibc_relayer_types::core::ics24_host::identifier::ChainId;
 
+use super::contract::WasmContract;
 
-#[derive(Serialize, Deserialize, Debug)]
+
+
+// Used to serialize with serde, because the floats prevent that in the other chain Data fields
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IsolatedChainData{
     pub apis: Apis,
     pub chain_id: ChainId,
@@ -29,8 +34,7 @@ impl From<ChainInfo<'_>> for IsolatedChainData{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InstanceArguments{
-	pub chain: IsolatedChainData,
-	pub address: String,
+	pub contract: WasmContract,
 	pub function: WasmFunction,
 	pub init_storage: Vec<(Vec<u8>, Vec<u8>)>
 }
@@ -81,5 +85,18 @@ pub struct ReplyArgs{
 pub struct MigrateArgs{
 	pub env: Env,
 	pub msg: Vec<u8>
+}
+
+impl WasmFunction{
+	pub fn get_address(&self) -> Addr{
+		match self{
+			WasmFunction::Execute(ExecuteArgs { env, .. }) => env.contract.address.clone(),
+			WasmFunction::Instantiate(InstantiateArgs { env, .. }) => env.contract.address.clone(),
+			WasmFunction::Query(QueryArgs { env, .. }) => env.contract.address.clone(),
+			WasmFunction::Reply(ReplyArgs { env, .. }) => env.contract.address.clone(),
+			WasmFunction::Sudo(SudoArgs { env, .. }) => env.contract.address.clone(),
+			WasmFunction::Migrate(MigrateArgs { env, .. }) => env.contract.address.clone(),
+		}
+	}
 }
 

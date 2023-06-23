@@ -1,11 +1,16 @@
+use crate::wasm_emulation::input::IsolatedChainData;
+use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch::prelude::queriers::CosmWasm;
 use schemars::JsonSchema;
 use cosmwasm_std::Empty;
 use cosmwasm_std::Order;
 use cosmwasm_std::Storage;
 
 use cosmwasm_std::from_binary;
-use ibc_chain_registry::chain::ChainData;
 
+
+use serde::Deserialize;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::process::Command;
 use crate::wasm_emulation::input::InstanceArguments;
@@ -24,13 +29,14 @@ use cosmwasm_std::{
 
 use anyhow::{Result as AnyResult};
 
+use super::channel::get_channel;
 use super::input::ExecuteArgs;
 use super::input::InstantiateArgs;
 use super::input::QueryArgs;
 use super::input::WasmFunction;
 use super::output::WasmOutput;
 
-pub fn run_contract<QueryC: DeserializeOwned>(args: InstanceArguments) -> AnyResult<WasmRunnerOutput<QueryC>>{
+pub fn run_contract<ExecC: DeserializeOwned>(args: InstanceArguments) -> AnyResult<WasmRunnerOutput<ExecC>>{
 
     let serialized_args = to_binary(&args).unwrap().to_base64();
 
@@ -48,12 +54,12 @@ pub fn run_contract<QueryC: DeserializeOwned>(args: InstanceArguments) -> AnyRes
     if binary_stdout.is_err() || binary_stdout.as_ref().unwrap().is_err(){
         panic!("Err when calling contract, {:?}", result)
     }
-    let decoded_result: WasmRunnerOutput<QueryC> = binary_stdout??;
+    let decoded_result: WasmRunnerOutput<ExecC> = binary_stdout??;
 
     Ok(decoded_result)
 }
 
-fn apply_storage_changes<Empty>(storage: &mut dyn Storage, output: &WasmRunnerOutput<Empty>){
+fn apply_storage_changes<ExecC>(storage: &mut dyn Storage, output: &WasmRunnerOutput<ExecC>){
 
     // We change all the values with the output
     for (key, value) in &output.storage.current_keys{
@@ -66,21 +72,79 @@ fn apply_storage_changes<Empty>(storage: &mut dyn Storage, output: &WasmRunnerOu
     }
 } 
 
-#[derive(Clone)]
-pub struct WasmContract{
-    code: Vec<u8>,
-    contract_addr: String,
-    chain: ChainData
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DistantContract{
+    pub contract_addr: String,
+    pub chain: IsolatedChainData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DistantCodeId{
+    pub code_id: u64,
+    pub chain: IsolatedChainData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LocalContract{
+    pub code: Vec<u8>,
+    pub chain: IsolatedChainData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum WasmContract{
+    Local(LocalContract),
+    DistantContract(DistantContract),
+    DistantCodeId(DistantCodeId)
 }
 
 impl WasmContract{
-    pub fn new(code: Vec<u8>, contract_addr: String, chain: ChainData) -> Self{
-
+    pub fn new_local(code: Vec<u8>, chain: IsolatedChainData) -> Self{
         check_wasm(&code, &HashSet::default()).unwrap();
-        Self{
-            code,
+        Self::Local(LocalContract { code, chain })
+
+    }
+
+    pub fn new_distant_contract(contract_addr: String, chain: IsolatedChainData) -> Self{
+        Self::DistantContract(DistantContract{
             contract_addr,
             chain
+        })
+    }
+
+    pub fn new_distant_code_id(code_id: u64, chain: IsolatedChainData) -> Self{
+        Self::DistantCodeId(DistantCodeId{
+            code_id,
+            chain
+        })
+
+    }
+
+    pub fn get_chain(&self) -> IsolatedChainData{
+        match self{
+            WasmContract::Local(LocalContract { chain, .. }) => chain.clone(),
+            WasmContract::DistantContract(DistantContract { chain, .. }) => chain.clone(),
+            WasmContract::DistantCodeId(DistantCodeId { chain, .. }) => chain.clone(),
+        }
+    }
+
+    pub fn get_code(self) -> AnyResult<Vec<u8>>{
+        match self{
+            WasmContract::Local(LocalContract { code, .. }) => Ok(code),
+            WasmContract::DistantContract(DistantContract { chain, contract_addr }) => {
+                let (rt, channel) = get_channel(chain)?;
+                let wasm_querier = CosmWasm::new(channel);
+
+                let code_info = rt.block_on(wasm_querier.contract_info(contract_addr))?;
+                let code = rt.block_on(wasm_querier.code_data(code_info.code_id))?;
+                Ok(code)
+            }
+            WasmContract::DistantCodeId(DistantCodeId { chain,code_id }) => {
+                let (rt, channel) = get_channel(chain)?;
+                let wasm_querier = CosmWasm::new(channel);
+
+                let code = rt.block_on(wasm_querier.code_data(code_id))?;
+                Ok(code)
+            }
         }
     }
 }
@@ -100,8 +164,7 @@ where
 
         // We start by building the dependencies we will pass through the wasm executer
         let execute_args = InstanceArguments{
-            address: env.contract.address.to_string(),
-            chain: self.chain.clone().into(),
+            contract:self.clone(),
             function: WasmFunction::Execute(ExecuteArgs{
                 env,
                 info,
@@ -130,8 +193,7 @@ where
     ) -> AnyResult<Response<ExecC>> {
         // We start by building the dependencies we will pass through the wasm executer
         let instantiate_arguments = InstanceArguments{
-            address: env.contract.address.to_string(),
-            chain: self.chain.clone().into(),
+            contract:self.clone(),
             function: WasmFunction::Instantiate(InstantiateArgs{
                 env,
                 info,
@@ -153,8 +215,7 @@ where
     fn query(&self, deps: Deps<QueryC>, env: Env, msg: Vec<u8>) -> AnyResult<Binary> {
         // We start by building the dependencies we will pass through the wasm executer
         let query_arguments = InstanceArguments{
-            address: env.contract.address.to_string(),
-            chain: self.chain.clone().into(),
+            contract:self.clone(),
             function: WasmFunction::Query(QueryArgs{
                 env,
                 msg,

@@ -23,6 +23,9 @@ pub enum Error {
 
     #[error("Unregistered code id")]
     UnregisteredCodeId(usize),
+
+    #[error("Unregistered contract address, not present loccaly or on-chain")]
+    UnregisteredContractAddress(String),
 }
 
 impl Error {

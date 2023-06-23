@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
@@ -68,9 +67,15 @@ fn no_init<BankT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>(
 ) {
 }
 
+impl Default for BasicApp {
+    fn default() -> Self {
+        Self::new(no_init)
+    }
+}
+
 impl BasicApp {
     /// Creates new default `App` implementation working with Empty custom messages.
-    pub fn new<F>(codes: &'static mut HashMap<usize, Box<dyn Contract<Empty, Empty>>>, init_fn: F) -> Self
+    pub fn new<F>(init_fn: F) -> Self
     where
         F: FnOnce(
             &mut Router<
@@ -86,15 +91,15 @@ impl BasicApp {
             &mut dyn Storage,
         ),
     {
-        AppBuilder::new(codes).build(init_fn)
+        AppBuilder::new().build(init_fn)
     }
 }
 
 /// Creates new default `App` implementation working with customized exec and query messages.
 /// Outside of `App` implementation to make type elision better.
-pub fn custom_app<ExecC, QueryC, F>(codes: &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>, init_fn: F) -> BasicApp<ExecC, QueryC>
+pub fn custom_app<ExecC, QueryC, F>(init_fn: F) -> BasicApp<ExecC, QueryC>
 where
-    ExecC: cosmwasm_std::CustomMsg + DeserializeOwned + 'static,
+    ExecC: Debug + Clone + PartialEq + JsonSchema + DeserializeOwned + 'static,
     QueryC: Debug + CustomQuery + DeserializeOwned + 'static,
     F: FnOnce(
         &mut Router<
@@ -110,7 +115,7 @@ where
         &mut dyn Storage,
     ),
 {
-    AppBuilder::new_custom(codes).build(init_fn)
+    AppBuilder::new_custom().build(init_fn)
 }
 
 impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT> Querier
@@ -189,6 +194,24 @@ pub struct AppBuilder<Bank, Api, Storage, Custom, Wasm, Staking, Distr, Ibc, Gov
     gov: Gov,
 }
 
+impl Default
+    for AppBuilder<
+        BankKeeper,
+        MockApi,
+        MockStorage,
+        FailingModule<Empty, Empty, Empty>,
+        WasmKeeper<Empty, Empty>,
+        StakeKeeper,
+        DistributionKeeper,
+        FailingModule<IbcMsg, IbcQuery, Empty>,
+        FailingModule<GovMsg, Empty, Empty>,
+    >
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl
     AppBuilder<
         BankKeeper,
@@ -203,13 +226,13 @@ impl
     >
 {
     /// Creates builder with default components working with empty exec and query messages.
-    pub fn new(codes: &'static mut HashMap<usize, Box<dyn Contract<Empty, Empty>>>) -> Self {
+    pub fn new() -> Self {
         AppBuilder {
             api: MockApi::default(),
             block: mock_env().block,
             storage: MockStorage::new(),
             bank: BankKeeper::new(),
-            wasm: WasmKeeper::new(codes),
+            wasm: WasmKeeper::new(),
             custom: FailingModule::new(),
             staking: StakeKeeper::new(),
             distribution: DistributionKeeper::new(),
@@ -232,18 +255,18 @@ impl<ExecC, QueryC>
         FailingModule<GovMsg, Empty, Empty>,
     >
 where
-    ExecC: cosmwasm_std::CustomMsg + DeserializeOwned + 'static,
+    ExecC: Debug + Clone + PartialEq + JsonSchema + DeserializeOwned + 'static,
     QueryC: Debug + CustomQuery + DeserializeOwned + 'static,
 {
     /// Creates builder with default components designed to work with custom exec and query
     /// messages.
-    pub fn new_custom(codes: &'static mut HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>) -> Self {
+    pub fn new_custom() -> Self {
         AppBuilder {
             api: MockApi::default(),
             block: mock_env().block,
             storage: MockStorage::new(),
             bank: BankKeeper::new(),
-            wasm: WasmKeeper::new(codes),
+            wasm: WasmKeeper::new(),
             custom: FailingModule::new(),
             staking: StakeKeeper::new(),
             distribution: DistributionKeeper::new(),
@@ -673,7 +696,7 @@ where
     DistrT: Distribution,
     IbcT: Ibc,
     GovT: Gov,
-    CustomT::ExecT: cosmwasm_std::CustomMsg + DeserializeOwned + 'static,
+    CustomT::ExecT: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
     CustomT::QueryT: CustomQuery + DeserializeOwned + 'static,
 {
     /// This registers contract code (like uploading wasm bytecode on a chain),
@@ -1517,8 +1540,6 @@ mod test {
             // we transfer PITY from lucky_winner to runner_up
             runner_up: String,
         }
-
-        impl cosmwasm_std::CustomMsg for CustomMsg{}
 
         struct CustomHandler {}
 
