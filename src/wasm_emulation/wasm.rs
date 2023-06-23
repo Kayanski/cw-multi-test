@@ -4,7 +4,6 @@ use cw_orch::prelude::queriers::DaemonQuerier;
 use cw_orch::daemon::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
 
-use crate::Wasm;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
@@ -75,7 +74,46 @@ pub struct ContractData {
     pub created: u64,
 }
 
-pub struct WasmFileKeeper<ExecC: 'static, QueryC: 'static> {
+pub trait Wasm<ExecC, QueryC> {
+    /// Handles all WasmQuery requests
+    fn query(
+        &self,
+        api: &dyn Api,
+        storage: &dyn Storage,
+        querier: &dyn Querier,
+        block: &BlockInfo,
+        request: AccessibleWasmQuery,
+    ) -> AnyResult<Binary>;
+
+    /// Handles all WasmMsg messages
+    fn execute(
+        &self,
+        api: &dyn Api,
+        storage: &mut dyn Storage,
+        router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
+        block: &BlockInfo,
+        sender: Addr,
+        msg: WasmMsg,
+    ) -> AnyResult<AppResponse>;
+
+    /// Admin interface, cannot be called via CosmosMsg
+    fn sudo(
+        &self,
+        api: &dyn Api,
+        contract_addr: Addr,
+        storage: &mut dyn Storage,
+        router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
+        block: &BlockInfo,
+        msg: Binary,
+    ) -> AnyResult<AppResponse>;
+}
+
+pub enum AccessibleWasmQuery{
+    WasmQuery(WasmQuery),
+    AllQuery()
+}
+
+pub struct WasmKeeper<ExecC: 'static, QueryC: 'static> {
     /// code is in-memory lookup that stands in for wasm code
     /// this can only be edited on the WasmRouter, and just read in caches
     codes: HashMap<usize, WasmContract>,
@@ -110,7 +148,7 @@ impl AddressGenerator for SimpleAddressGenerator {
     }
 }
 
-impl<ExecC, QueryC> Wasm<ExecC, QueryC> for WasmFileKeeper<ExecC, QueryC>
+impl<ExecC, QueryC> Wasm<ExecC, QueryC> for WasmKeeper<ExecC, QueryC>
 where
     ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
@@ -121,27 +159,38 @@ where
         storage: &dyn Storage,
         querier: &dyn Querier,
         block: &BlockInfo,
-        request: WasmQuery,
+        request: AccessibleWasmQuery,
     ) -> AnyResult<Binary> {
         match request {
-            WasmQuery::Smart { contract_addr, msg } => {
-                let addr = api.addr_validate(&contract_addr)?;
-                self.query_smart(addr, api, storage, querier, block, msg.into())
+            AccessibleWasmQuery::AllQuery() => {
+                let all_local_state: Vec<_> = storage
+                    .range(None, None, Order::Ascending)
+                    .collect();
+
+                Ok(to_binary(&all_local_state)?)
+            },
+            AccessibleWasmQuery::WasmQuery(request) => {
+                match request{
+                    WasmQuery::Smart { contract_addr, msg } => {
+                        let addr = api.addr_validate(&contract_addr)?;
+                        self.query_smart(addr, api, storage, querier, block, msg.into())
+                    }
+                    WasmQuery::Raw { contract_addr, key } => {
+                        let addr = api.addr_validate(&contract_addr)?;
+                        Ok(self.query_raw(addr, storage, &key))
+                    }
+                    WasmQuery::ContractInfo { contract_addr } => {
+                        let addr = api.addr_validate(&contract_addr)?;
+                        let contract = self.load_contract(storage, &addr)?;
+                        let mut res = ContractInfoResponse::default();
+                        res.code_id = contract.code_id as u64;
+                        res.creator = contract.creator.to_string();
+                        res.admin = contract.admin.map(|x| x.into());
+                        to_binary(&res).map_err(Into::into)
+                    }
+                    query => bail!(Error::UnsupportedWasmQuery(query)),
+                }
             }
-            WasmQuery::Raw { contract_addr, key } => {
-                let addr = api.addr_validate(&contract_addr)?;
-                Ok(self.query_raw(addr, storage, &key))
-            }
-            WasmQuery::ContractInfo { contract_addr } => {
-                let addr = api.addr_validate(&contract_addr)?;
-                let contract = self.load_contract(storage, &addr)?;
-                let mut res = ContractInfoResponse::default();
-                res.code_id = contract.code_id as u64;
-                res.creator = contract.creator.to_string();
-                res.admin = contract.admin.map(|x| x.into());
-                to_binary(&res).map_err(Into::into)
-            }
-            query => bail!(Error::UnsupportedWasmQuery(query)),
         }
     }
 
@@ -178,7 +227,7 @@ where
     }
 }
 
-impl<ExecC, QueryC> WasmFileKeeper<ExecC, QueryC> {
+impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     pub fn store_code(&mut self, code: WasmContract) -> usize {
         let idx = self.codes.len() + 1 + LOCAL_CODE_OFFFSET;
         self.codes.insert(idx, code);
@@ -198,7 +247,7 @@ impl<ExecC, QueryC> WasmFileKeeper<ExecC, QueryC> {
         Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap().into()))
     }
 
-        fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
+    pub fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
 
         if let Ok(local_contract) = CONTRACTS
             .load(&prefixed_read(storage, NAMESPACE_WASM), address){
@@ -300,8 +349,8 @@ impl<ExecC, QueryC> WasmFileKeeper<ExecC, QueryC> {
 }
 
 
-impl<ExecC, QueryC> Default for WasmFileKeeper<ExecC, QueryC>{
- fn default() -> WasmFileKeeper<ExecC, QueryC>{
+impl<ExecC, QueryC> Default for WasmKeeper<ExecC, QueryC>{
+ fn default() -> WasmKeeper<ExecC, QueryC>{
     Self{
         codes: HashMap::new(),
         _e: std::marker::PhantomData::default(),
@@ -313,7 +362,7 @@ impl<ExecC, QueryC> Default for WasmFileKeeper<ExecC, QueryC>{
 }
 
 
-impl<ExecC, QueryC> WasmFileKeeper<ExecC, QueryC>
+impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC>
 where
     ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
@@ -992,7 +1041,7 @@ use cw_orch::daemon::networks::JUNO_1;
     fn add_wasm_file_keeper(){
 
         let app = AppBuilder::default();
-        let mut wasm = WasmFileKeeper::<Empty, Empty>::new();
+        let mut wasm = WasmKeeper::<Empty, Empty>::new();
         wasm.set_chain(JUNO_1.into());
         app.with_wasm::<FailingModule<Empty, Empty, Empty>, _>(wasm);
 

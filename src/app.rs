@@ -1,3 +1,4 @@
+use crate::wasm_emulation::wasm::AccessibleWasmQuery;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
@@ -21,7 +22,8 @@ use crate::ibc::Ibc;
 use crate::module::{FailingModule, Module};
 use crate::staking::{Distribution, DistributionKeeper, StakeKeeper, Staking, StakingSudo};
 use crate::transactions::transactional;
-use crate::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
+use crate::wasm_emulation::contract::WasmContract;
+use crate::wasm_emulation::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
 
 pub fn next_block(block: &mut BlockInfo) {
     block.time = block.time.plus_seconds(5);
@@ -701,7 +703,7 @@ where
 {
     /// This registers contract code (like uploading wasm bytecode on a chain),
     /// so it can later be used to instantiate a contract.
-    pub fn store_code(&mut self, code: Box<dyn Contract<CustomT::ExecT, CustomT::QueryT>>) -> u64 {
+    pub fn store_code(&mut self, code: WasmContract) -> u64 {
         self.init_modules(|router, _, _| router.wasm.store_code(code) as u64)
     }
 
@@ -969,7 +971,7 @@ where
     ) -> AnyResult<Binary> {
         let querier = self.querier(api, storage, block);
         match request {
-            QueryRequest::Wasm(req) => self.wasm.query(api, storage, &querier, block, req),
+            QueryRequest::Wasm(req) => self.wasm.query(api, storage, &querier, block, AccessibleWasmQuery::WasmQuery(req)),
             QueryRequest::Bank(req) => self.bank.query(api, storage, &querier, block, req),
             QueryRequest::Custom(req) => self.custom.query(api, storage, &querier, block, req),
             QueryRequest::Staking(req) => self.staking.query(api, storage, &querier, block, req),
@@ -1112,6 +1114,7 @@ mod test {
     use crate::test_helpers::contracts::{caller, echo, error, hackatom, payout, reflect};
     use crate::test_helpers::{CustomMsg, EmptyMsg};
     use crate::transactions::StorageTransaction;
+    use crate::wasm_emulation::wasm::Wasm;
 
     fn get_balance<BankT, ApiT, StorageT, CustomT, WasmT>(
         app: &App<BankT, ApiT, StorageT, CustomT, WasmT>,

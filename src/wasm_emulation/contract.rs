@@ -1,3 +1,4 @@
+use crate::ContractWrapper;
 use crate::wasm_emulation::input::IsolatedChainData;
 use cw_orch::prelude::queriers::DaemonQuerier;
 use cw_orch::prelude::queriers::CosmWasm;
@@ -94,7 +95,7 @@ pub struct LocalContract{
 pub enum WasmContract{
     Local(LocalContract),
     DistantContract(DistantContract),
-    DistantCodeId(DistantCodeId)
+    DistantCodeId(DistantCodeId),
 }
 
 impl WasmContract{

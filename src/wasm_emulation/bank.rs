@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Uint128, Order};
 use cw_orch::prelude::queriers::DaemonQuerier;
 use cw_orch::daemon::GrpcChannel;
 use ibc_chain_registry::chain::ChainData;
@@ -26,7 +26,6 @@ const BALANCES: Map<&Addr, NativeBalance> = Map::new("balances");
 
 pub const NAMESPACE_BANK: &[u8] = b"bank";
 
-// WIP
 #[derive(Clone, std::fmt::Debug, PartialEq, Eq, JsonSchema)]
 pub enum BankSudo {
     Mint {
@@ -35,7 +34,12 @@ pub enum BankSudo {
     },
 }
 
-pub trait Bank: Module<ExecT = BankMsg, QueryT = BankQuery, SudoT = BankSudo> {}
+pub enum AccessibleBankQuery{
+    BankQuery(BankQuery),
+    AllQuery()
+}
+
+pub trait AccessibleBank: Module<ExecT = BankMsg, QueryT = AccessibleBankQuery, SudoT = BankSudo> {}
 
 pub struct DistantBankKeeper {
     channel: Channel,
@@ -151,11 +155,11 @@ fn coins_to_string(coins: &[Coin]) -> String {
         .join(",")
 }
 
-impl Bank for DistantBankKeeper {}
+impl AccessibleBank for DistantBankKeeper {}
 
 impl Module for DistantBankKeeper {
     type ExecT = BankMsg;
-    type QueryT = BankQuery;
+    type QueryT = AccessibleBankQuery;
     type SudoT = BankSudo;
 
     fn execute<ExecC, QueryC>(
@@ -216,27 +220,38 @@ impl Module for DistantBankKeeper {
         storage: &dyn Storage,
         _querier: &dyn Querier,
         _block: &BlockInfo,
-        request: BankQuery,
+        request: AccessibleBankQuery,
     ) -> AnyResult<Binary> {
         let bank_storage = prefixed_read(storage, NAMESPACE_BANK);
         match request {
-            BankQuery::AllBalances { address } => {
-                let address = api.addr_validate(&address)?;
-                let amount = self.get_balance(&bank_storage, &address)?;
-                let res = AllBalanceResponse { amount };
-                Ok(to_binary(&res)?)
+
+            AccessibleBankQuery::AllQuery() => {
+                let balances: Result<Vec<_>, _> = BALANCES
+                    .range(&bank_storage, None, None, Order::Ascending)
+                    .collect();
+                Ok(to_binary(&balances?)?)
+            },
+            AccessibleBankQuery::BankQuery(request)=> {
+                match request{
+                    BankQuery::AllBalances { address } => {
+                        let address = api.addr_validate(&address)?;
+                        let amount = self.get_balance(&bank_storage, &address)?;
+                        let res = AllBalanceResponse { amount };
+                        Ok(to_binary(&res)?)
+                    }
+                    BankQuery::Balance { address, denom } => {
+                        let address = api.addr_validate(&address)?;
+                        let all_amounts = self.get_balance(&bank_storage, &address)?;
+                        let amount = all_amounts
+                            .into_iter()
+                            .find(|c| c.denom == denom)
+                            .unwrap_or_else(|| coin(0, denom));
+                        let res = BalanceResponse { amount };
+                        Ok(to_binary(&res)?)
+                    }
+                    q => bail!("Unsupported bank query: {:?}", q),
+                }
             }
-            BankQuery::Balance { address, denom } => {
-                let address = api.addr_validate(&address)?;
-                let all_amounts = self.get_balance(&bank_storage, &address)?;
-                let amount = all_amounts
-                    .into_iter()
-                    .find(|c| c.denom == denom)
-                    .unwrap_or_else(|| coin(0, denom));
-                let res = BalanceResponse { amount };
-                Ok(to_binary(&res)?)
-            }
-            q => bail!("Unsupported bank query: {:?}", q),
         }
     }
 }
