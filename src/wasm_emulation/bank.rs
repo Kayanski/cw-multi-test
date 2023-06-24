@@ -1,10 +1,10 @@
 use std::str::FromStr;
 use cosmwasm_std::{Uint128, Order};
 use cw_orch::prelude::queriers::DaemonQuerier;
-use cw_orch::daemon::GrpcChannel;
+
 use ibc_chain_registry::chain::ChainData;
-use tokio::runtime::Runtime;
-use tonic::transport::Channel;
+
+
 
 use anyhow::{bail, Result as AnyResult};
 use itertools::Itertools;
@@ -22,6 +22,8 @@ use crate::executor::AppResponse;
 use crate::module::Module;
 use crate::prefixed_storage::{prefixed, prefixed_read};
 
+use super::channel::get_channel;
+
 const BALANCES: Map<&Addr, NativeBalance> = Map::new("balances");
 
 pub const NAMESPACE_BANK: &[u8] = b"bank";
@@ -33,26 +35,34 @@ pub enum BankSudo {
         amount: Vec<Coin>,
     },
 }
+pub const STARGATE_ALL_BANK_QUERY_URL: &str = "/local.bank.all";
 
 pub enum AccessibleBankQuery{
     BankQuery(BankQuery),
     AllQuery()
 }
 
-pub trait AccessibleBank: Module<ExecT = BankMsg, QueryT = AccessibleBankQuery, SudoT = BankSudo> {}
+pub trait Bank: Module<ExecT = BankMsg, QueryT = AccessibleBankQuery, SudoT = BankSudo> {}
 
-pub struct DistantBankKeeper {
-    channel: Channel,
-    rt: Runtime
+pub struct BankKeeper {
+    chain: Option<ChainData>
 }
 
-impl DistantBankKeeper {
-    pub fn new(chain: ChainData) -> Self {
-        let rt = Runtime::new().unwrap();
-        DistantBankKeeper{
-            channel: rt.block_on(GrpcChannel::connect(&chain.apis.grpc, &chain.chain_id)).unwrap(),
-            rt
+impl Default for BankKeeper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BankKeeper {
+    pub fn new() -> Self {
+        BankKeeper{
+            chain: None
         }
+    }
+
+    pub fn set_chain(&mut self, chain: ChainData){
+       self.chain = Some(chain)
     }
 
     // this is an "admin" function to let us adjust bank accounts in genesis
@@ -83,8 +93,9 @@ impl DistantBankKeeper {
     fn get_balance(&self, bank_storage: &dyn Storage, account: &Addr) -> AnyResult<Vec<Coin>> {
         // If there is no balance present, we query it on the distant chain
         if !BALANCES.has(bank_storage, account){
-            let querier = cw_orch::daemon::queriers::Bank::new(self.channel.clone());
-            let distant_amounts: Vec<Coin> = self.rt
+            let (rt, channel) = get_channel(self.chain.clone().unwrap())?;
+            let querier = cw_orch::daemon::queriers::Bank::new(channel);
+            let distant_amounts: Vec<Coin> = rt
                 .block_on(querier.balance(account, None))
                 .map(|result| result
                         .into_iter()
@@ -155,9 +166,9 @@ fn coins_to_string(coins: &[Coin]) -> String {
         .join(",")
 }
 
-impl AccessibleBank for DistantBankKeeper {}
+impl Bank for BankKeeper {}
 
-impl Module for DistantBankKeeper {
+impl Module for BankKeeper {
     type ExecT = BankMsg;
     type QueryT = AccessibleBankQuery;
     type SudoT = BankSudo;

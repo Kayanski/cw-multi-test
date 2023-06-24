@@ -35,7 +35,7 @@ k256 = { version = "0.11.1", features = ["ecdsa"] }
 cw-orch = {version="0.13.0", git="https://github.com/AbstractSDK/cw-orchestrator.git", features=["daemon"], branch="feature/local_executor" }
 tokio = "1.28.2"
 ibc-chain-registry = "0.24.1"
-cosmwasm-vm = { version = "1.2", features = ["staking", "stargate"] }
+cosmwasm-vm = { version = "1.2", features = ["staking", "stargate", "iterator"] }
 bincode = "1.3.3"
 base64 = "0.21.2"
 cw20 = "1.0.1"
@@ -50,6 +50,7 @@ once_cell = "1.18.0"
 lazy_static = "1.4.0"
 log = "0.4.19"
 env_logger = "0.10.0"
+cosmwasm-schema = "1.2.7"
 
 [dev-dependencies]
 # We don't use the following dependencies directly. They're dependencies of our dependencies.

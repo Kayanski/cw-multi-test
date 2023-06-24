@@ -1,4 +1,7 @@
 
+use crate::wasm_emulation::channel::get_channel;
+use crate::wasm_emulation::input::SerChainData;
+
 use super::mock_storage::MockStorage;
 use num_bigint::{BigInt, Sign};
 use cosmwasm_vm::BackendError;
@@ -10,10 +13,9 @@ use cosmwasm_std::Order;
 use cosmwasm_std::Record;
 use cosmwasm_vm::BackendResult;
 use cosmwasm_vm::Storage;
-use super::super::input::{IsolatedChainData};
 use cw_orch::prelude::queriers::DaemonQuerier;
 
-use cw_orch::daemon::GrpcChannel;
+
 use cw_orch::prelude::queriers::CosmWasm;
 
 
@@ -49,9 +51,9 @@ pub struct DualStorage{
 }
 
 impl DualStorage{
-	pub fn new(rt: Runtime, chain: IsolatedChainData, contract_addr: String, init: Option<Vec<(Vec<u8>, Vec<u8>)>>) -> AnyResult<DualStorage>{
+	pub fn new(chain: impl Into<SerChainData>, contract_addr: String, init: Option<Vec<(Vec<u8>, Vec<u8>)>>) -> AnyResult<DualStorage>{
 		// We create an instance from a code_id, an address, and we run the code in it
-		let channel = rt.block_on(GrpcChannel::connect(&chain.apis.grpc, &chain.chain_id))?;
+		let (rt, channel) = get_channel(chain)?;
 		let wasm_querier = CosmWasm::new(channel);
 
 		let mut local_storage = MockStorage::default();

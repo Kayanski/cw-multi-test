@@ -1,8 +1,10 @@
 
+use cosmwasm_std::CustomMsg;
 use cw_orch::prelude::queriers::DaemonQuerier;
 
 use cw_orch::daemon::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
+use tokio::runtime::Runtime;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -33,6 +35,7 @@ use anyhow::{bail, Context, Result as AnyResult};
 
 use super::channel::get_channel;
 use super::contract::WasmContract;
+use super::input::WasmStorage;
 
 // Contract state is kept in Storage, separate from the contracts themselves
 const CONTRACTS: Map<&Addr, ContractData> = Map::new("contracts");
@@ -108,6 +111,9 @@ pub trait Wasm<ExecC, QueryC> {
     ) -> AnyResult<AppResponse>;
 }
 
+
+pub const STARGATE_ALL_WASM_QUERY_URL: &str = "/local.wasm.all";
+
 pub enum AccessibleWasmQuery{
     WasmQuery(WasmQuery),
     AllQuery()
@@ -150,7 +156,7 @@ impl AddressGenerator for SimpleAddressGenerator {
 
 impl<ExecC, QueryC> Wasm<ExecC, QueryC> for WasmKeeper<ExecC, QueryC>
 where
-    ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
+    ExecC: CustomMsg + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
 {
     fn query(
@@ -167,7 +173,18 @@ where
                     .range(None, None, Order::Ascending)
                     .collect();
 
-                Ok(to_binary(&all_local_state)?)
+                let contracts = CONTRACTS.range(&prefixed_read(storage, NAMESPACE_WASM), None, None, Order::Ascending)
+                    .map(|res| match res{
+                        Ok((key, value)) => Ok((key.to_string(), value)),
+                        Err(e) => Err(e)
+                    })
+                    .collect::<Result<HashMap<_, _>, _>>()?;
+
+                Ok(to_binary(&WasmStorage{
+                    contracts,
+                    storage: all_local_state,
+                    codes: self.codes.clone()
+                })?)
             },
             AccessibleWasmQuery::WasmQuery(request) => {
                 match request{
@@ -240,21 +257,15 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
             if let Some(code) = code{
                 return Ok(code.clone())
             }else{
-                return Ok(WasmContract::new_distant_code_id(handler.code_id.try_into().unwrap(), self.chain.clone().unwrap().into()))
+                return Ok(WasmContract::new_distant_code_id(handler.code_id.try_into().unwrap(), self.chain.clone().unwrap()))
             }
         }
 
-        Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap().into()))
+        Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap()))
     }
 
-    pub fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
+    pub fn load_distant_contract(channel: tonic::transport::Channel, rt: &Runtime, address: &Addr) -> AnyResult<ContractData>{
 
-        if let Ok(local_contract) = CONTRACTS
-            .load(&prefixed_read(storage, NAMESPACE_WASM), address){
-            return Ok(local_contract)
-        }
-
-        let (rt, channel) = get_channel(self.chain.clone().unwrap().into())?;
         let wasm_querier = CosmWasm::new(channel);
 
         let code_info = rt.block_on(wasm_querier.contract_info(address.clone()))?;
@@ -271,6 +282,18 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
             creator: Addr::unchecked(code_info.creator),
             label: code_info.label
         })
+    }
+
+    pub fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
+
+        if let Ok(local_contract) = CONTRACTS
+            .load(&prefixed_read(storage, NAMESPACE_WASM), address){
+            return Ok(local_contract)
+        }
+
+        let (rt, channel) = get_channel(self.chain.clone().unwrap())?;
+
+        Self::load_distant_contract(channel, &rt, address)
     }
 
     pub fn dump_wasm_raw(&self, storage: &dyn Storage, address: &Addr) -> Vec<Record> {
@@ -364,7 +387,7 @@ impl<ExecC, QueryC> Default for WasmKeeper<ExecC, QueryC>{
 
 impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC>
 where
-    ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
+    ExecC: CustomMsg + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
 {
     pub fn new() -> Self {

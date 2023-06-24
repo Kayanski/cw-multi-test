@@ -19,9 +19,8 @@ mod ibc;
 mod module;
 mod prefixed_storage;
 mod staking;
-mod test_helpers;
 mod transactions;
-mod wasm;
+//mod wasm;
 
 pub use crate::app::{
     custom_app, next_block, App, AppBuilder, BasicApp, BasicAppBuilder, CosmosRouter, Router,
@@ -36,4 +35,4 @@ pub use crate::module::{FailingModule, Module};
 pub use crate::staking::{
     Distribution, DistributionKeeper, StakeKeeper, Staking, StakingInfo, StakingSudo,
 };
-pub use crate::wasm::{AddressGenerator, Wasm, WasmKeeper, WasmSudo};
+pub use crate::wasm_emulation::wasm::{AddressGenerator, Wasm, WasmKeeper, WasmSudo};
