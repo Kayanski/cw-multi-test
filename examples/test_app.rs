@@ -7,6 +7,7 @@ use cw20::AllAccountsResponse;
 
 use cw20::Cw20QueryMsg;
 use cw_multi_test::FailingModule;
+use cw_multi_test::wasm_emulation::bank::BankKeeper;
 use cw_orch::daemon::networks::PHOENIX_1;
 use cw_multi_test::AppBuilder;
 
@@ -19,9 +20,13 @@ pub fn main(){
     let mut wasm = WasmKeeper::<Empty, Empty>::new();
     wasm.set_chain(PHOENIX_1.into());
 
+    let mut bank = BankKeeper::new();
+    bank.set_chain(PHOENIX_1.into());
+
 	// First we instantiate a new app
     let app = AppBuilder::default()
-    	.with_wasm::<FailingModule<Empty, Empty, Empty>, _>(wasm);
+    	.with_wasm::<FailingModule<Empty, Empty, Empty>, _>(wasm)
+        .with_bank(bank);
     let mut app = app.build(| _,_,_| {});
 
     // Then we send a message to the blockchain through the app
@@ -39,5 +44,8 @@ pub fn main(){
     // We query to verify the state changed
     let response: AllAccountsResponse = app.wrap().query_wasm_smart(contract_addr,&Cw20QueryMsg::AllAccounts { start_after: Some(query.to_string()), limit: Some(30) } ).unwrap();
     log::info!("After transfer : {:?}", response);
+
+    let cousin_count: GetCountResponse = app.wrap().query_wasm_smart(market, &QueryMsg::GetCount {  }).unwrap();
+
 
 }

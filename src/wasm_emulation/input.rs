@@ -28,13 +28,15 @@ use anyhow::Result as AnyResult;
 pub struct SerChainData{
     pub chain_id: ChainId,
     pub apis: Apis,
+    pub bech32_prefix: String
 }
 
 impl From<ChainData> for SerChainData{
 	fn from(c: ChainData) -> SerChainData{
 		Self{
 			chain_id: c.chain_id,
-			apis: c.apis
+			apis: c.apis,
+			bech32_prefix: c.bech32_prefix
 		}
 	}
 }

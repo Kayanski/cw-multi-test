@@ -9,4 +9,4 @@ pub mod contract;
 
 pub mod wasm;
 
-pub mod runner;
+pub mod api;

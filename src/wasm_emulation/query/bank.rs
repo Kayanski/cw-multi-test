@@ -6,9 +6,9 @@ use std::str::FromStr;
 use cw_orch::prelude::queriers::DaemonQuerier;
 use cw_utils::NativeBalance;
 
-use tonic::transport::Channel;
+
 use cw_orch::prelude::queriers::Bank;
-use tokio::runtime::Runtime;
+
 
 use std::collections::HashMap;
 use cosmwasm_std::Binary;
@@ -38,7 +38,7 @@ pub struct BankQuerier {
     supplies: HashMap<String, Uint128>,
     /// HashMap<address, coins>
     balances: HashMap<String, Vec<Coin>>,
-    channel: Channel,
+    chain: SerChainData,
 }
 
 impl BankQuerier {
@@ -49,12 +49,11 @@ impl BankQuerier {
             .map(|(s, c)| (s.to_string(), c.clone().into_vec()))
             .collect();
 
-        let (_rt, channel) = get_channel(chain).unwrap();
 
         BankQuerier {
             supplies: Self::calculate_supplies(&balances),
             balances,
-            channel
+            chain
         }
     }
 
@@ -85,8 +84,6 @@ impl BankQuerier {
 
     pub fn query(&self, request: &BankQuery) -> QuerierResult {
 
-        let rt = Runtime::new().unwrap();
-        let querier = Bank::new(self.channel.clone());
         let contract_result: ContractResult<Binary> = match request {
             BankQuery::Balance { address, denom } => {
                 // proper error on not found, serialize result on found
@@ -97,6 +94,9 @@ impl BankQuerier {
 
                 // If the amount is not available, we query it from the distant chain
                 if amount.is_none(){
+                    let (rt, channel) = get_channel(self.chain.clone()).unwrap();
+                    let querier = Bank::new(channel);
+
                 	let query_result = 
                         rt
                         .block_on(querier.balance(address, Some(denom.clone())))
@@ -123,6 +123,8 @@ impl BankQuerier {
 
                 // We query only if the bank balance doesn't exist
                 if amount.is_none(){
+                    let (rt, channel) = get_channel(self.chain.clone()).unwrap();
+                    let querier = Bank::new(channel);
                 	let query_result: Result<Vec<Coin>, _> = rt
                             .block_on(querier.balance(address, None))
                             .map(|result| result

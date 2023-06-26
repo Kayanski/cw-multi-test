@@ -19,7 +19,7 @@ use cw_orch::prelude::queriers::DaemonQuerier;
 use cw_orch::prelude::queriers::CosmWasm;
 
 
-use tokio::runtime::Runtime;
+
 
 use std::collections::HashSet;
 
@@ -44,18 +44,15 @@ struct Iter {
 pub struct DualStorage{
 	pub local_storage: MockStorage,
 	pub removed_keys: HashSet<Vec<u8>>,
-	pub wasm_querier: CosmWasm,
+	pub chain: SerChainData,
 	pub contract_addr: String,
-	pub rt: Runtime,
     iterators: HashMap<u32, Iter>,
 }
 
 impl DualStorage{
 	pub fn new(chain: impl Into<SerChainData>, contract_addr: String, init: Option<Vec<(Vec<u8>, Vec<u8>)>>) -> AnyResult<DualStorage>{
 		// We create an instance from a code_id, an address, and we run the code in it
-		let (rt, channel) = get_channel(chain)?;
-		let wasm_querier = CosmWasm::new(channel);
-
+		
 		let mut local_storage = MockStorage::default();
 		for (key, value) in init.unwrap(){
 			local_storage.set(&key, &value).0?;
@@ -63,10 +60,9 @@ impl DualStorage{
 
 		Ok(Self{
 			local_storage,
-			wasm_querier,
+			chain: chain.into(),
 			removed_keys: HashSet::default(),
 			contract_addr,
-			rt,
 			iterators: HashMap::new()
 		})
 	}
@@ -86,7 +82,11 @@ impl Storage for DualStorage{
     	let (mut value, gas_info) = self.local_storage.get(key);
     	// If it's not available, we query it online if it was not removed locally
     	if !self.removed_keys.contains(key) && value.as_ref().unwrap().is_none(){
-    		let distant_result = self.rt.block_on(self.wasm_querier.contract_raw_state(self.contract_addr.clone(), key.to_vec()));
+
+    		let (rt, channel) = get_channel(self.chain.clone()).unwrap();
+			let wasm_querier = CosmWasm::new(channel);
+
+    		let distant_result = rt.block_on(wasm_querier.contract_raw_state(self.contract_addr.clone(), key.to_vec()));
     		if let Ok(result) = distant_result{
     			if !result.data.is_empty(){
     				value = Ok(Some(result.data))
@@ -142,7 +142,10 @@ impl Storage for DualStorage{
         };
     	// 1. We verify that there is enough elements in the distant iterator
     	if iterator.distant_iter.position == iterator.distant_iter.data.len() && iterator.distant_iter.key.is_some(){
-    		let new_keys = self.rt.block_on(self.wasm_querier.all_contract_state(self.contract_addr.clone(), Some(PageRequest { 
+
+    		let (rt, channel) = get_channel(self.chain.clone()).unwrap();
+			let wasm_querier = CosmWasm::new(channel);
+    		let new_keys = rt.block_on(wasm_querier.all_contract_state(self.contract_addr.clone(), Some(PageRequest { 
 	    		key: iterator.distant_iter.key.clone().unwrap(),
 	    		offset: 0, 
 	    		limit: DISTANT_LIMIT,

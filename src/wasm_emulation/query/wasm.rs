@@ -12,9 +12,6 @@ use cosmwasm_std::{Empty, ContractResult};
 use cosmwasm_std::{Addr, SystemResult, to_binary, ContractInfoResponse};
 use cw_orch::prelude::queriers::CosmWasm;
 
-use tonic::transport::Channel;
-
-use tokio::runtime::Runtime;
 
 use cosmwasm_std::{
     WasmQuery,
@@ -31,19 +28,14 @@ use crate::wasm_emulation::input::{WasmStorage, InstanceArguments, QueryArgs};
 
 pub struct WasmQuerier {
     chain: SerChainData,
-    rt: Runtime,
-    channel: Channel,
     current_storage: QuerierStorage,
 }
 
 impl WasmQuerier {
     pub fn new(chain: impl Into<SerChainData>, storage: Option<QuerierStorage>) -> Self {
         let chain = chain.into();
-        let (rt, channel) = get_channel(chain.clone()).unwrap();
         Self { 
             chain,
-            rt,
-            channel,
             current_storage: storage.unwrap_or(Default::default())
         }
     }
@@ -58,14 +50,13 @@ impl WasmQuerier {
 
     pub fn query(&self, request: &WasmQuery) -> QuerierResult {
 
-        let wasm_querier = CosmWasm::new(self.channel.clone());
         match request{
             WasmQuery::ContractInfo { contract_addr } =>{
                 let addr = Addr::unchecked(contract_addr);
                 let data = if let Some(local_contract) = self.current_storage.wasm.contracts.get(contract_addr){
                     local_contract.clone()
                 }else{
-                    WasmKeeper::<Empty, Empty>::load_distant_contract(self.channel.clone(), &self.rt, &addr).unwrap()
+                    WasmKeeper::<Empty, Empty>::load_distant_contract(self.chain.clone(), &addr).unwrap()
                 };
                 let mut response = ContractInfoResponse::default();
                 response.code_id = data.code_id.try_into().unwrap();
@@ -81,8 +72,10 @@ impl WasmQuerier {
                 let value: Vec<u8> = if let Some(value) = self.current_storage.wasm.storage.iter().find(|e| e.0 == total_key){
                     value.1.clone()
                 }else{
-                    let query_result = self
-                        .rt
+
+                    let (rt, channel) = get_channel(self.chain.clone()).unwrap();
+                    let wasm_querier = CosmWasm::new(channel);
+                    let query_result = rt
                         .block_on(
                             wasm_querier.contract_raw_state(contract_addr.to_string(), key.to_vec()),
                         )

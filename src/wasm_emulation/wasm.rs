@@ -4,7 +4,7 @@ use cw_orch::prelude::queriers::DaemonQuerier;
 
 use cw_orch::daemon::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
-use tokio::runtime::Runtime;
+
 
 use std::collections::HashMap;
 use std::fmt;
@@ -35,7 +35,7 @@ use anyhow::{bail, Context, Result as AnyResult};
 
 use super::channel::get_channel;
 use super::contract::WasmContract;
-use super::input::WasmStorage;
+use super::input::{WasmStorage, SerChainData};
 
 // Contract state is kept in Storage, separate from the contracts themselves
 const CONTRACTS: Map<&Addr, ContractData> = Map::new("contracts");
@@ -264,7 +264,9 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
         Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap()))
     }
 
-    pub fn load_distant_contract(channel: tonic::transport::Channel, rt: &Runtime, address: &Addr) -> AnyResult<ContractData>{
+    pub fn load_distant_contract(chain: impl Into<SerChainData>, address: &Addr) -> AnyResult<ContractData>{
+
+        let (rt, channel) = get_channel(chain)?;
 
         let wasm_querier = CosmWasm::new(channel);
 
@@ -291,9 +293,7 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
             return Ok(local_contract)
         }
 
-        let (rt, channel) = get_channel(self.chain.clone().unwrap())?;
-
-        Self::load_distant_contract(channel, &rt, address)
+        Self::load_distant_contract(self.chain.clone().unwrap(), address)
     }
 
     pub fn dump_wasm_raw(&self, storage: &dyn Storage, address: &Addr) -> Vec<Record> {
