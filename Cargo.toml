@@ -52,6 +52,8 @@ log = "0.4.19"
 env_logger = "0.10.0"
 cosmwasm-schema = "1.2.7"
 bech32 = "0.9.1"
+treediff = {version="4.0.2", features=["with-rustc-serialize"]}
+rustc-serialize = "0.3.24"
 
 [dev-dependencies]
 # We don't use the following dependencies directly. They're dependencies of our dependencies.

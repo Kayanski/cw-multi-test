@@ -1,5 +1,6 @@
 
 
+use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
 use std::path::Path;
 use cosmwasm_schema::QueryResponses;
 use cosmwasm_schema::cw_serde;
@@ -113,4 +114,9 @@ pub fn main(){
     let response: BalanceResponse = app.wrap().query_wasm_smart(a_currency,&Cw20QueryMsg::Balance { address: sender.to_string() } ).unwrap();
     log::info!("After migrate and deposit : {:?}", response);
 
+
+    let analysis = StorageAnalyzer::new(&app).unwrap();
+    log::info!("All contracts storage {:?}", analysis.all_readable_contract_storage());
+    
+    analysis.compare_all_readable_contract_storage(PHOENIX_1.into());
 }

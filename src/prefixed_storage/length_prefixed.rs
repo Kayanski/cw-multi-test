@@ -4,6 +4,13 @@
 //! Everything in this file is only responsible for building such keys
 //! and is in no way specific to any kind of storage.
 
+use cosmwasm_std::Addr;
+
+use crate::wasm_emulation::wasm::NAMESPACE_WASM;
+
+pub const CONTRACT_STORAGE_PREFIX: &str = "contract_data/";
+
+
 /// Calculates the raw key prefix for a given namespace as documented
 /// in https://github.com/webmaster128/key-namespacing#length-prefixed-keys
 pub fn to_length_prefixed(namespace: &[u8]) -> Vec<u8> {
@@ -37,6 +44,26 @@ fn encode_length(namespace: &[u8]) -> [u8; 2] {
     let length_bytes = (namespace.len() as u32).to_be_bytes();
     [length_bytes[2], length_bytes[3]]
 }
+
+/// Decodes the length of a given namespace from a 2 byte big endian encoded integer
+pub fn decode_length(bytes: [u8; 2]) -> u32 {
+    u32::from_be_bytes([0, 0, bytes[0], bytes[1]])
+}
+
+
+
+pub fn contract_namespace(contract: &Addr) -> Vec<u8> {
+    let mut name = CONTRACT_STORAGE_PREFIX.as_bytes().to_vec();
+    name.extend_from_slice(contract.as_bytes());
+    name
+}
+
+pub fn get_full_contract_storage_namespace(contract_addr: &Addr) -> Vec<u8>{
+    let namespace = contract_namespace(contract_addr);
+    to_length_prefixed_nested(&[NAMESPACE_WASM, &namespace])
+}
+
+
 
 #[cfg(test)]
 mod tests {

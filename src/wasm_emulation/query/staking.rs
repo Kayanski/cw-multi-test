@@ -8,9 +8,10 @@ use cosmwasm_std::{ContractResult, SystemResult};
 use cosmwasm_std::{to_binary};
 
 use cosmwasm_std::{QuerierResult};
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct StakingQuerier {
     denom: String,
     validators: Vec<Validator>,

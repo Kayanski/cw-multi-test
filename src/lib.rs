@@ -17,7 +17,7 @@ mod executor;
 mod gov;
 mod ibc;
 mod module;
-mod prefixed_storage;
+pub(crate) mod prefixed_storage;
 mod staking;
 mod transactions;
 //mod wasm;
@@ -36,3 +36,4 @@ pub use crate::staking::{
     Distribution, DistributionKeeper, StakeKeeper, Staking, StakingInfo, StakingSudo,
 };
 pub use crate::wasm_emulation::wasm::{AddressGenerator, Wasm, WasmKeeper, WasmSudo};
+

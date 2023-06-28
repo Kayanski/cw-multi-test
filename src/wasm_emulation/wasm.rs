@@ -1,4 +1,5 @@
 
+use crate::prefixed_storage::contract_namespace;
 use cosmwasm_std::CustomMsg;
 use cw_orch::prelude::queriers::DaemonQuerier;
 
@@ -301,12 +302,6 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
         storage.range(None, None, Order::Ascending).collect()
     }
 
-    fn contract_namespace(&self, contract: &Addr) -> Vec<u8> {
-        let mut name = b"contract_data/".to_vec();
-        name.extend_from_slice(contract.as_bytes());
-        name
-    }
-
     fn contract_storage<'a>(
         &self,
         storage: &'a mut dyn Storage,
@@ -314,7 +309,7 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     ) -> Box<dyn Storage + 'a> {
         // We double-namespace this, once from global storage -> wasm_storage
         // then from wasm_storage -> the contracts subspace
-        let namespace = self.contract_namespace(address);
+        let namespace = contract_namespace(address);
         let storage = PrefixedStorage::multilevel(storage, &[NAMESPACE_WASM, &namespace]);
         Box::new(storage)
     }
@@ -327,7 +322,7 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     ) -> Box<dyn Storage + 'a> {
         // We double-namespace this, once from global storage -> wasm_storage
         // then from wasm_storage -> the contracts subspace
-        let namespace = self.contract_namespace(address);
+        let namespace = contract_namespace(address);
         let storage = ReadonlyPrefixedStorage::multilevel(storage, &[NAMESPACE_WASM, &namespace]);
         Box::new(storage)
     }

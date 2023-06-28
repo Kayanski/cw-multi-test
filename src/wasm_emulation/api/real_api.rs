@@ -4,6 +4,10 @@ use cosmwasm_vm::BackendError;
 use cosmwasm_vm::GasInfo;
 use cosmwasm_vm::BackendApi;
 
+const SHORT_CANON_LEN: usize = 40;
+const LONG_CANON_LEN: usize = 64;
+
+
 pub fn bytes_from_bech32(address: &str, prefix: &str) -> Result<Vec<u8>, BackendError>{
 
 	if address.is_empty(){
@@ -11,10 +15,11 @@ pub fn bytes_from_bech32(address: &str, prefix: &str) -> Result<Vec<u8>, Backend
 	}
 
 	let (hrp, data, _variant) = bech32::decode(address)
-		.map_err(|e| BackendError::Unknown { msg: e.to_string() })?;
+		.map_err(|e| BackendError::Unknown { msg: format!("Invalid Bech32 address : Err {}", e) })?;
 	if hrp != prefix{
 		return Err(BackendError::Unknown { msg: format!("invalid Bech32 prefix; expected {}, got {}", prefix, hrp) })
 	}
+
 
 	Ok(Vec::<u8>::from_base32(&data).unwrap())
 }
@@ -71,21 +76,22 @@ impl BackendApi for RealApi{
 			return (Err(BackendError::Unknown { msg: "empty address string is not allowed".to_string() }), gas_cost)
 		}
 
-		let bz = bytes_from_bech32(address, &self.get_prefix()).unwrap();
-
-		// err = VerifyAddressFormat(bz) - No address format verification here
-
-		(Ok(bz), gas_cost)
+		(bytes_from_bech32(address, &self.get_prefix()), gas_cost)
 	}
 	fn human_address(&self, canon: &[u8]) -> (Result<String, BackendError>, GasInfo) { 
 		let gas_cost = GasInfo::free();
+
+		if canon.len() == SHORT_CANON_LEN || canon.len() == LONG_CANON_LEN{
+			return (Err(BackendError::Unknown { msg: "Canon address doesn't have the right length".to_string() }), gas_cost);
+		}
 
 		if canon.is_empty(){
 			return (Ok("".to_string()), gas_cost);
 		}
 
-		let address = bech32::encode(&self.get_prefix(), canon.to_base32(), Variant::Bech32).unwrap();
+		let human = bech32::encode(&self.get_prefix(), canon.to_base32(), Variant::Bech32)
+			.map_err(|e| BackendError::Unknown { msg: e.to_string() });
 
-		(Ok(address), gas_cost)
+		(human, gas_cost)
 	 }
 }

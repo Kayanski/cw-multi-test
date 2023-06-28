@@ -1,3 +1,4 @@
+use crate::wasm_emulation::input::BankStorage;
 use std::str::FromStr;
 use cosmwasm_std::{Uint128, Order};
 use cw_orch::prelude::queriers::DaemonQuerier;
@@ -240,7 +241,9 @@ impl Module for BankKeeper {
                 let balances: Result<Vec<_>, _> = BALANCES
                     .range(&bank_storage, None, None, Order::Ascending)
                     .collect();
-                Ok(to_binary(&balances?)?)
+                Ok(to_binary(&BankStorage{
+                    storage: balances?
+                })?)
             },
             AccessibleBankQuery::BankQuery(request)=> {
                 match request{

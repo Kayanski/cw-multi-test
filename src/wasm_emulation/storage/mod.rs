@@ -4,3 +4,4 @@ pub use dual_storage::DualStorage;
 
 pub use mock_storage::MockStorage; 
 
+pub mod analyzer;

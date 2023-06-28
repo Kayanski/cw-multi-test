@@ -1,3 +1,7 @@
+use crate::wasm_emulation::staking::STARGATE_ALL_STAKING_QUERY_URL;
+use crate::wasm_emulation::query::staking::StakingQuerier;
+use crate::prefixed_storage::get_full_contract_storage_namespace;
+
 use std::collections::HashMap;
 use crate::wasm_emulation::wasm::ContractData;
 use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
@@ -56,26 +60,48 @@ pub struct WasmStorage{
 	pub storage: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
+impl WasmStorage{
+	pub fn get_contract_storage(&self, contract_addr: &Addr) -> Vec<(Vec<u8>, Vec<u8>)>{
+	    let namespace = get_full_contract_storage_namespace(&Addr::unchecked(contract_addr)).to_vec();
+	    let namespace_len = namespace.len();
+	    let keys: Vec<(Vec<u8>, Vec<u8>)> = self.storage
+	        .iter()
+	        // We filter only value in this namespace
+	        .filter(|(k, _)|  k.len() >= namespace_len && k[..namespace_len] == namespace).cloned()
+	        // We remove the namespace prefix from the key
+	        .map(|(k, value)| (k[namespace_len..].to_vec(), value)).collect();
+
+	    keys
+	}
+}
+
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct BankStorage{
 	pub storage: Vec<(Addr, NativeBalance)>,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct StakingStorage{
+	pub storage: StakingQuerier,
+}
+
+#[derive(Serialize, Clone, Deserialize, Default, Debug)]
 pub struct QuerierStorage{
     pub wasm: WasmStorage,
     pub bank: Vec<(Addr, NativeBalance)>,
+    pub staking: StakingStorage
 }
 
 pub fn get_querier_storage<QueryC: CustomQuery>(deps: &Deps<QueryC>) -> AnyResult<QuerierStorage>{
     // We get the wasm storage for all wasm contract to make sure we dispatch everything (with the mock Querier)
     let wasm: WasmStorage = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
     let bank = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
-    // log::info!("All local contract storage : {:?}", wasm.storage);
-    // log::info!("All local bank storage : {:?}", bank);
+    let staking = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_STAKING_QUERY_URL.to_string(), data: Binary(vec![]) })?;
     Ok(QuerierStorage{
         wasm,
-        bank
+        bank,
+        staking
     })
 }
 

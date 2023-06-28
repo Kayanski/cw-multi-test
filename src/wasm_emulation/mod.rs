@@ -8,5 +8,5 @@ pub mod channel;
 pub mod contract;
 
 pub mod wasm;
-
+pub mod staking;
 pub mod api;

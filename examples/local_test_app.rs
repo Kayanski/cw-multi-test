@@ -9,6 +9,7 @@ use cw_multi_test::Executor;
 use cw_multi_test::FailingModule;
 use cw_multi_test::wasm_emulation::contract::WasmContract;
 use cw_multi_test::AppBuilder;
+use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
 use cw_multi_test::wasm_emulation::wasm::WasmKeeper;
 
 use cw_orch::daemon::networks::PHOENIX_1;
@@ -90,11 +91,25 @@ pub fn main(){
     app.execute_contract(sender.clone(), counter1.clone(), &ExecuteMsg::SetCousin { addr: counter2.to_string() }, &[]).unwrap();
     app.execute_contract(sender, counter2.clone(), &ExecuteMsg::SetCousin { addr: counter1.to_string() }, &[]).unwrap();
 
-    let cousin_count: GetCousinCountResponse = app.wrap().query_wasm_smart(counter2, &QueryMsg::GetCousinCount {  }).unwrap();
+    let cousin_count: GetCousinCountResponse = app.wrap().query_wasm_smart(counter2.clone(), &QueryMsg::GetCousinCount {  }).unwrap();
     assert_eq!(cousin_count.raw, cousin_count.smart);
     assert_eq!(cousin_count.raw, 3);
 
-    let cousin_count: GetCousinCountResponse = app.wrap().query_wasm_smart(counter1, &QueryMsg::GetCousinCount {  }).unwrap();
+    let cousin_count: GetCousinCountResponse = app.wrap().query_wasm_smart(counter1.clone(), &QueryMsg::GetCousinCount {  }).unwrap();
     assert_eq!(cousin_count.raw, cousin_count.smart);
     assert_eq!(cousin_count.raw, 2);
+
+
+
+    // Analyze the storage
+
+    let analysis = StorageAnalyzer::new(&app).unwrap();
+
+    log::info!("analysis, wasm1 {:?}", analysis.get_contract_storage(counter1.clone()));
+    log::info!("analysis, wasm1 {:?}", analysis.readable_storage(counter1));
+    log::info!("analysis, wasm2 {:?}", analysis.get_contract_storage(counter2.clone()));
+    log::info!("analysis, wasm2 {:?}", analysis.readable_storage(counter2));
+    log::info!("All contracts storage {:?}", analysis.all_readable_contract_storage());
+    analysis.compare_all_readable_contract_storage(PHOENIX_1.into());
+
 }
