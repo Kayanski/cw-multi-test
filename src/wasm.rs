@@ -253,24 +253,27 @@ where
     }
 }
 
-impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
+impl<ExecC: 'static, QueryC: 'static> WasmKeeper<ExecC, QueryC> {
     pub fn store_code(&mut self, code: WasmContract) -> usize {
         let idx = self.codes.len() + 1 + LOCAL_CODE_OFFFSET;
         self.codes.insert(idx, code);
         idx
     }
 
-    fn get_code(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<WasmContract>{
+    /// This function won't error if it doesn't find the contract
+    /// This allows for querying an online contract struct without having to check if it exists just there
+    /// Upon execution, it will fail if the contract doesn't exist
+    fn get_code(&self, storage: &dyn Storage, address: &Addr) -> WasmContract{
         if let Ok(handler) = self.load_contract(storage, address){
             let code = self.codes.get(&handler.code_id);
             if let Some(code) = code{
-                return Ok(code.clone())
+                return code.clone()
             }else{
-                return Ok(WasmContract::new_distant_code_id(handler.code_id.try_into().unwrap(), self.chain.clone().unwrap()))
+                return WasmContract::new_distant_code_id(handler.code_id.try_into().unwrap(), self.chain.clone().unwrap())
             }
         }
 
-        Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap()))
+        WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap())
     }
 
     pub fn load_distant_contract(chain: impl Into<SerChainData>, address: &Addr) -> AnyResult<ContractData>{
@@ -335,7 +338,7 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
         Box::new(storage)
     }
 
-    fn verify_attributes(&self, attributes: &[Attribute]) -> AnyResult<()> {
+    fn verify_attributes(attributes: &[Attribute]) -> AnyResult<()> {
         for attr in attributes {
             let key = attr.key.trim();
             let val = attr.value.trim();
@@ -356,14 +359,14 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
         Ok(())
     }
 
-    fn verify_response<T>(&self, response: Response<T>) -> AnyResult<Response<T>>
+    fn verify_response<T>(response: Response<T>) -> AnyResult<Response<T>>
     where
         T: Clone + fmt::Debug + PartialEq + JsonSchema,
     {
-        self.verify_attributes(&response.attributes)?;
+        Self::verify_attributes(&response.attributes)?;
 
         for event in &response.events {
-            self.verify_attributes(&event.attributes)?;
+            Self::verify_attributes(&event.attributes)?;
             let ty = event.ty.trim();
             if ty.len() < 2 {
                 bail!(Error::event_type_too_short(ty));
@@ -386,7 +389,7 @@ where
     }
 
     pub fn new_with_custom_address_generator(generator: impl AddressGenerator + 'static) -> Self {
-        let default = Self::new();
+        let default = Self::default();
         Self {
             codes: default.codes,
             _e: default._e,
@@ -592,11 +595,14 @@ where
                 contract_addr,
                 new_code_id,
                 msg,
-            } => { // TODO
+            } => {
                 let contract_addr = api.addr_validate(&contract_addr)?;
 
                 // check admin status and update the stored code_id
                 let new_code_id = new_code_id as usize;
+
+                // We don't check if the code exists here, the call_migrate hook, will take care of that
+                // This allows migrating to an on-chain code_id
 
                 let mut data = self.load_contract(storage, &contract_addr)?;
                 if data.admin != Some(sender) {
@@ -827,7 +833,7 @@ where
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        self.verify_response(self.with_storage(
+        Self::verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -847,7 +853,7 @@ where
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        self.verify_response(self.with_storage(
+        Self::verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -866,7 +872,7 @@ where
         block: &BlockInfo,
         reply: Reply,
     ) -> AnyResult<Response<ExecC>> {
-        self.verify_response(self.with_storage(
+        Self::verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -885,7 +891,7 @@ where
         block: &BlockInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        self.verify_response(self.with_storage(
+        Self::verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -904,7 +910,7 @@ where
         block: &BlockInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-       self.verify_response(self.with_storage(
+       Self::verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -937,8 +943,7 @@ where
         F: FnOnce(WasmContract, Deps<QueryC>, Env) -> AnyResult<T>,
     {
 
-        let handler = self.get_code(storage, &address)
-            .or(Err(Error::UnregisteredContractAddress(address.to_string())))?;
+        let handler = self.get_code(storage, &address);
 
         let storage = self.contract_storage_readonly(storage, &address);
         let env = self.get_env(address, block);
@@ -964,8 +969,7 @@ where
         F: FnOnce(WasmContract, DepsMut<QueryC>, Env) -> AnyResult<T>,
         ExecC: DeserializeOwned,
     {
-        let handler = self.get_code(storage, &address)
-            .or(Err(Error::UnregisteredContractAddress(address.to_string())))?;
+        let handler = self.get_code(storage, &address);
 
         // We don't actually need a transaction here, as it is already embedded in a transactional.
         // execute_submsg or App.execute_multi.
