@@ -53,7 +53,7 @@ impl<C: DeserializeOwned> MockQuerier<C> {
     pub fn new(chain: impl Into<SerChainData>, storage: Option<QuerierStorage>) -> Self {
         let chain = chain.into();
         MockQuerier {
-            bank: BankQuerier::new(chain.clone(), storage.as_ref().map(|storage| storage.bank.clone())),
+            bank: BankQuerier::new(chain.clone(), storage.as_ref().map(|storage| storage.bank.storage.clone())),
             
             staking: StakingQuerier::default(),
             wasm: WasmQuerier::new(chain, storage),

@@ -1,5 +1,4 @@
-use crate::wasm_emulation::staking::STARGATE_ALL_STAKING_QUERY_URL;
-use crate::wasm_emulation::query::staking::StakingQuerier;
+use crate::wasm_emulation::bank::BankKeeper;
 use crate::prefixed_storage::get_full_contract_storage_namespace;
 
 use std::collections::HashMap;
@@ -25,6 +24,7 @@ use serde::{Serialize, Deserialize};
 use crate::wasm_emulation::wasm::STARGATE_ALL_WASM_QUERY_URL;
 
 use super::contract::WasmContract;
+use super::query::AllQuerier;
 
 use anyhow::Result as AnyResult;
 
@@ -81,27 +81,19 @@ pub struct BankStorage{
 	pub storage: Vec<(Addr, NativeBalance)>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct StakingStorage{
-	pub storage: StakingQuerier,
-}
-
 #[derive(Serialize, Clone, Deserialize, Default, Debug)]
 pub struct QuerierStorage{
     pub wasm: WasmStorage,
-    pub bank: Vec<(Addr, NativeBalance)>,
-    pub staking: StakingStorage
+    pub bank: <BankKeeper as AllQuerier>::Output,
 }
 
 pub fn get_querier_storage<QueryC: CustomQuery>(deps: &Deps<QueryC>) -> AnyResult<QuerierStorage>{
     // We get the wasm storage for all wasm contract to make sure we dispatch everything (with the mock Querier)
-    let wasm: WasmStorage = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
+    let wasm = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
     let bank = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
-    let staking = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_STAKING_QUERY_URL.to_string(), data: Binary(vec![]) })?;
     Ok(QuerierStorage{
         wasm,
         bank,
-        staking
     })
 }
 

@@ -1,4 +1,3 @@
-use crate::wasm_emulation::staking::STARGATE_ALL_STAKING_QUERY_URL;
 use rustc_serialize::json::Json;
 use treediff::tools::Recorder;
 use treediff::diff;
@@ -16,7 +15,7 @@ use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
 use crate::wasm_emulation::wasm::NAMESPACE_WASM;
 use crate::wasm_emulation::wasm::STARGATE_ALL_WASM_QUERY_URL;
 use cosmwasm_std::{Binary, QueryRequest};
-use crate::{App, wasm_emulation::input::{QuerierStorage, WasmStorage}};
+use crate::{App, wasm_emulation::input::{QuerierStorage}};
 
 use anyhow::Result as AnyResult;
 
@@ -30,11 +29,10 @@ pub struct StorageAnalyzer{
 impl StorageAnalyzer{
 	pub fn new(app: &App) -> AnyResult<Self>{
 	    // We get the wasm storage for all wasm contract to make sure we dispatch everything (with the mock Querier)
-	    let wasm: WasmStorage = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
+	    let wasm = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
 	    let bank = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
-	    let staking = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_STAKING_QUERY_URL.to_string(), data: Binary(vec![]) })?;
 		Ok(Self{
-			storage: QuerierStorage { wasm, bank, staking }
+			storage: QuerierStorage { wasm, bank }
 		})
 	}
 
@@ -110,7 +108,7 @@ impl StorageAnalyzer{
 
 	pub fn get_balance(&self, addr: impl Into<String>) -> Vec<Coin>{
 		let addr: String = addr.into();
-		self.storage.bank.iter().find(|(a, _)| a.as_str() == addr)
+		self.storage.bank.storage.iter().find(|(a, _)| a.as_str() == addr)
 			.map(|(_, b)| b.0.clone())
 			.unwrap_or(vec![])
 	}

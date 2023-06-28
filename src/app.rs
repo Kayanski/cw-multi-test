@@ -1,7 +1,7 @@
 use cosmwasm_std::CustomMsg;
-use crate::wasm_emulation::bank::AccessibleBankQuery;
+
 use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
-use crate::wasm_emulation::wasm::AccessibleWasmQuery;
+
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
@@ -975,15 +975,15 @@ where
     ) -> AnyResult<Binary> {
         let querier = self.querier(api, storage, block);
         match request {
-            QueryRequest::Wasm(req) => self.wasm.query(api, storage, &querier, block, AccessibleWasmQuery::WasmQuery(req)),
-            QueryRequest::Bank(req) => self.bank.query(api, storage, &querier, block, AccessibleBankQuery::BankQuery(req)),
+            QueryRequest::Wasm(req) => self.wasm.query(api, storage, &querier, block, req),
+            QueryRequest::Bank(req) => self.bank.query(api, storage, &querier, block, req),
             QueryRequest::Custom(req) => self.custom.query(api, storage, &querier, block, req),
             QueryRequest::Staking(req) => self.staking.query(api, storage, &querier, block, req),
             QueryRequest::Ibc(req) => self.ibc.query(api, storage, &querier, block, req),
             QueryRequest::Stargate { path, data: _ } => {
                 match path.as_str(){
-                    STARGATE_ALL_WASM_QUERY_URL => self.wasm.query(api, storage, &querier, block, AccessibleWasmQuery::AllQuery()),
-                    STARGATE_ALL_BANK_QUERY_URL => self.bank.query(api, storage, &querier, block, AccessibleBankQuery::AllQuery()),
+                    STARGATE_ALL_WASM_QUERY_URL => Ok(to_binary(&self.wasm.query_all(storage)?)?),
+                    STARGATE_ALL_BANK_QUERY_URL => Ok(to_binary(&self.bank.query_all(storage)?)?),
                     _=> unimplemented!()
                 }
             }

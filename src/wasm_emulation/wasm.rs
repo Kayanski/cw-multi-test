@@ -37,6 +37,7 @@ use anyhow::{bail, Context, Result as AnyResult};
 use super::channel::get_channel;
 use super::contract::WasmContract;
 use super::input::{WasmStorage, SerChainData};
+use super::query::AllQuerier;
 
 // Contract state is kept in Storage, separate from the contracts themselves
 const CONTRACTS: Map<&Addr, ContractData> = Map::new("contracts");
@@ -78,7 +79,7 @@ pub struct ContractData {
     pub created: u64,
 }
 
-pub trait Wasm<ExecC, QueryC> {
+pub trait Wasm<ExecC, QueryC>: AllQuerier{
     /// Handles all WasmQuery requests
     fn query(
         &self,
@@ -86,7 +87,7 @@ pub trait Wasm<ExecC, QueryC> {
         storage: &dyn Storage,
         querier: &dyn Querier,
         block: &BlockInfo,
-        request: AccessibleWasmQuery,
+        request: WasmQuery,
     ) -> AnyResult<Binary>;
 
     /// Handles all WasmMsg messages
@@ -155,6 +156,31 @@ impl AddressGenerator for SimpleAddressGenerator {
     }
 }
 
+
+impl<ExecC, QueryC> AllQuerier for WasmKeeper<ExecC, QueryC>{
+    type Output = WasmStorage;
+    fn query_all(&self, storage: &dyn Storage,) -> AnyResult<WasmStorage>{
+        let all_local_state: Vec<_> = storage
+            .range(None, None, Order::Ascending)
+            .collect();
+
+        let contracts = CONTRACTS.range(&prefixed_read(storage, NAMESPACE_WASM), None, None, Order::Ascending)
+            .map(|res| match res{
+                Ok((key, value)) => Ok((key.to_string(), value)),
+                Err(e) => Err(e)
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        Ok(WasmStorage{
+            contracts,
+            storage: all_local_state,
+            codes: self.codes.clone()
+        })
+    }
+}
+
+
+
 impl<ExecC, QueryC> Wasm<ExecC, QueryC> for WasmKeeper<ExecC, QueryC>
 where
     ExecC: CustomMsg + DeserializeOwned + 'static,
@@ -166,49 +192,27 @@ where
         storage: &dyn Storage,
         querier: &dyn Querier,
         block: &BlockInfo,
-        request: AccessibleWasmQuery,
+        request: WasmQuery,
     ) -> AnyResult<Binary> {
         match request {
-            AccessibleWasmQuery::AllQuery() => {
-                let all_local_state: Vec<_> = storage
-                    .range(None, None, Order::Ascending)
-                    .collect();
-
-                let contracts = CONTRACTS.range(&prefixed_read(storage, NAMESPACE_WASM), None, None, Order::Ascending)
-                    .map(|res| match res{
-                        Ok((key, value)) => Ok((key.to_string(), value)),
-                        Err(e) => Err(e)
-                    })
-                    .collect::<Result<HashMap<_, _>, _>>()?;
-
-                Ok(to_binary(&WasmStorage{
-                    contracts,
-                    storage: all_local_state,
-                    codes: self.codes.clone()
-                })?)
-            },
-            AccessibleWasmQuery::WasmQuery(request) => {
-                match request{
-                    WasmQuery::Smart { contract_addr, msg } => {
-                        let addr = api.addr_validate(&contract_addr)?;
-                        self.query_smart(addr, api, storage, querier, block, msg.into())
-                    }
-                    WasmQuery::Raw { contract_addr, key } => {
-                        let addr = api.addr_validate(&contract_addr)?;
-                        Ok(self.query_raw(addr, storage, &key))
-                    }
-                    WasmQuery::ContractInfo { contract_addr } => {
-                        let addr = api.addr_validate(&contract_addr)?;
-                        let contract = self.load_contract(storage, &addr)?;
-                        let mut res = ContractInfoResponse::default();
-                        res.code_id = contract.code_id as u64;
-                        res.creator = contract.creator.to_string();
-                        res.admin = contract.admin.map(|x| x.into());
-                        to_binary(&res).map_err(Into::into)
-                    }
-                    query => bail!(Error::UnsupportedWasmQuery(query)),
-                }
+            WasmQuery::Smart { contract_addr, msg } => {
+                let addr = api.addr_validate(&contract_addr)?;
+                self.query_smart(addr, api, storage, querier, block, msg.into())
             }
+            WasmQuery::Raw { contract_addr, key } => {
+                let addr = api.addr_validate(&contract_addr)?;
+                Ok(self.query_raw(addr, storage, &key))
+            }
+            WasmQuery::ContractInfo { contract_addr } => {
+                let addr = api.addr_validate(&contract_addr)?;
+                let contract = self.load_contract(storage, &addr)?;
+                let mut res = ContractInfoResponse::default();
+                res.code_id = contract.code_id as u64;
+                res.creator = contract.creator.to_string();
+                res.admin = contract.admin.map(|x| x.into());
+                to_binary(&res).map_err(Into::into)
+            }
+            query => bail!(Error::UnsupportedWasmQuery(query)),
         }
     }
 
