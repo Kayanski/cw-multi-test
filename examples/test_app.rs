@@ -7,11 +7,11 @@ use cw20::AllAccountsResponse;
 
 use cw20::Cw20QueryMsg;
 use cw_multi_test::FailingModule;
-use cw_multi_test::wasm_emulation::bank::BankKeeper;
+use cw_multi_test::BankKeeper;
 use cw_orch::daemon::networks::PHOENIX_1;
 use cw_multi_test::AppBuilder;
 
-use cw_multi_test::wasm_emulation::wasm::WasmKeeper;
+use cw_multi_test::WasmKeeper;
 
 use cosmwasm_std::Empty;
 
@@ -44,8 +44,4 @@ pub fn main(){
     // We query to verify the state changed
     let response: AllAccountsResponse = app.wrap().query_wasm_smart(contract_addr,&Cw20QueryMsg::AllAccounts { start_after: Some(query.to_string()), limit: Some(30) } ).unwrap();
     log::info!("After transfer : {:?}", response);
-
-    let cousin_count: GetCountResponse = app.wrap().query_wasm_smart(market, &QueryMsg::GetCount {  }).unwrap();
-
-
 }

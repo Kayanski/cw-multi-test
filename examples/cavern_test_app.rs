@@ -1,5 +1,6 @@
 
 
+use cw_multi_test::Executor;
 use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
 use std::path::Path;
 use cosmwasm_schema::QueryResponses;
@@ -8,20 +9,17 @@ use cosmwasm_std::ContractInfoResponse;
 use cosmwasm_std::QueryRequest;
 use cosmwasm_std::WasmQuery;
 use cw_multi_test::wasm_emulation::contract::WasmContract;
-use cw_multi_test::wasm_emulation::bank::BankKeeper;
+use cw_multi_test::BankKeeper;
 use cosmwasm_std::coins;
 use cosmwasm_std::Addr;
 use cw20::BalanceResponse;
-
-use cw_multi_test::Executor;
-
 
 use cw20::Cw20QueryMsg;
 use cw_multi_test::FailingModule;
 use cw_orch::daemon::networks::PHOENIX_1;
 use cw_multi_test::AppBuilder;
 
-use cw_multi_test::wasm_emulation::wasm::WasmKeeper;
+use cw_multi_test::WasmKeeper;
 use moneymarket::market::ExecuteMsg;
 use cosmwasm_std::Empty;
 

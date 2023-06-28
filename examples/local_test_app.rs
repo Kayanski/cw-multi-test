@@ -10,7 +10,7 @@ use cw_multi_test::FailingModule;
 use cw_multi_test::wasm_emulation::contract::WasmContract;
 use cw_multi_test::AppBuilder;
 use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
-use cw_multi_test::wasm_emulation::wasm::WasmKeeper;
+use cw_multi_test::WasmKeeper;
 
 use cw_orch::daemon::networks::PHOENIX_1;
 
