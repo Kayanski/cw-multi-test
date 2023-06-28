@@ -224,7 +224,7 @@ where
                 msg,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps.as_ref())?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result = self.run_contract(execute_args)?;
@@ -253,7 +253,7 @@ where
                 msg,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps.as_ref())?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result = self.run_contract(instantiate_arguments)?;
@@ -274,7 +274,7 @@ where
                 msg,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps)?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result: WasmRunnerOutput<Empty> = self.run_contract(query_arguments)?;
@@ -293,7 +293,7 @@ where
                 msg,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps.as_ref())?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result = self.run_contract(sudo_args)?;
@@ -314,7 +314,7 @@ where
                 reply,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps.as_ref())?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result = self.run_contract(reply_args)?;
@@ -335,7 +335,7 @@ where
                 msg,
             }),
             init_storage: deps.storage.range(None, None, Order::Ascending).collect(),
-            querier_storage: get_querier_storage(&deps.as_ref())?,
+            querier_storage: get_querier_storage(&deps.querier)?,
         };
 
         let decoded_result = self.run_contract(migrate_args)?;

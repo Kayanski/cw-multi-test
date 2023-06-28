@@ -37,7 +37,6 @@ pub enum BankSudo {
         amount: Vec<Coin>,
     },
 }
-pub const STARGATE_ALL_BANK_QUERY_URL: &str = "/local.bank.all";
 
 pub enum AccessibleBankQuery{
     BankQuery(BankQuery),

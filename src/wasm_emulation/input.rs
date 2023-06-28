@@ -3,11 +3,11 @@ use crate::prefixed_storage::get_full_contract_storage_namespace;
 
 use std::collections::HashMap;
 use crate::wasm_emulation::wasm::ContractData;
-use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
 use cosmwasm_std::Addr;
 use cosmwasm_std::Binary;
 use cosmwasm_std::CustomQuery;
-use cosmwasm_std::Deps;
+
+use cosmwasm_std::QuerierWrapper;
 use cosmwasm_std::QueryRequest;
 
 use cw_orch::daemon::ChainInfo;
@@ -20,8 +20,6 @@ use ibc_chain_registry::chain::ChainData;
 use ibc_relayer_types::core::ics24_host::identifier::ChainId;
 use serde::{Serialize, Deserialize};
 
-
-use crate::wasm_emulation::wasm::STARGATE_ALL_WASM_QUERY_URL;
 
 use super::contract::WasmContract;
 use super::query::AllQuerier;
@@ -87,10 +85,14 @@ pub struct QuerierStorage{
     pub bank: <BankKeeper as AllQuerier>::Output,
 }
 
-pub fn get_querier_storage<QueryC: CustomQuery>(deps: &Deps<QueryC>) -> AnyResult<QuerierStorage>{
+pub const STARGATE_ALL_WASM_QUERY_URL: &str = "/local.wasm.all";
+pub const STARGATE_ALL_BANK_QUERY_URL: &str = "/local.bank.all";
+
+
+pub fn get_querier_storage<QueryC: CustomQuery>(q: &QuerierWrapper<QueryC>) -> AnyResult<QuerierStorage>{
     // We get the wasm storage for all wasm contract to make sure we dispatch everything (with the mock Querier)
-    let wasm = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
-    let bank = deps.querier.query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
+    let wasm = q.query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
+    let bank = q.query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
     Ok(QuerierStorage{
         wasm,
         bank,

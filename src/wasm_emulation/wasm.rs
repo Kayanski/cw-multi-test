@@ -114,8 +114,6 @@ pub trait Wasm<ExecC, QueryC>: AllQuerier{
 }
 
 
-pub const STARGATE_ALL_WASM_QUERY_URL: &str = "/local.wasm.all";
-
 pub enum AccessibleWasmQuery{
     WasmQuery(WasmQuery),
     AllQuery()

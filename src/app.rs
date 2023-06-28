@@ -1,6 +1,5 @@
 use cosmwasm_std::CustomMsg;
 
-use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
 
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
@@ -27,7 +26,8 @@ use crate::transactions::transactional;
 use crate::wasm_emulation::contract::WasmContract;
 use crate::wasm_emulation::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
 
-use crate::wasm_emulation::wasm::STARGATE_ALL_WASM_QUERY_URL;
+use crate::wasm_emulation::input::STARGATE_ALL_BANK_QUERY_URL;
+use crate::wasm_emulation::input::STARGATE_ALL_WASM_QUERY_URL;
 
 pub fn next_block(block: &mut BlockInfo) {
     block.time = block.time.plus_seconds(5);
@@ -980,6 +980,7 @@ where
             QueryRequest::Custom(req) => self.custom.query(api, storage, &querier, block, req),
             QueryRequest::Staking(req) => self.staking.query(api, storage, &querier, block, req),
             QueryRequest::Ibc(req) => self.ibc.query(api, storage, &querier, block, req),
+            // We add those custom local stargate queries to mock querying all the local storage in order to propagate for the in-contract-querier
             QueryRequest::Stargate { path, data: _ } => {
                 match path.as_str(){
                     STARGATE_ALL_WASM_QUERY_URL => Ok(to_binary(&self.wasm.query_all(storage)?)?),

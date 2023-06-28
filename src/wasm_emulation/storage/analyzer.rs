@@ -1,3 +1,4 @@
+use crate::wasm_emulation::input::get_querier_storage;
 use rustc_serialize::json::Json;
 use treediff::tools::Recorder;
 use treediff::diff;
@@ -11,10 +12,9 @@ use cosmwasm_std::Addr;
 use cw_orch::prelude::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
 use serde::__private::from_utf8_lossy;
-use crate::wasm_emulation::bank::STARGATE_ALL_BANK_QUERY_URL;
+
 use crate::wasm_emulation::wasm::NAMESPACE_WASM;
-use crate::wasm_emulation::wasm::STARGATE_ALL_WASM_QUERY_URL;
-use cosmwasm_std::{Binary, QueryRequest};
+
 use crate::{App, wasm_emulation::input::{QuerierStorage}};
 
 use anyhow::Result as AnyResult;
@@ -28,11 +28,9 @@ pub struct StorageAnalyzer{
 
 impl StorageAnalyzer{
 	pub fn new(app: &App) -> AnyResult<Self>{
-	    // We get the wasm storage for all wasm contract to make sure we dispatch everything (with the mock Querier)
-	    let wasm = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_WASM_QUERY_URL.to_string(), data: Binary(vec![]) })?;
-	    let bank = app.wrap().query(&QueryRequest::Stargate { path: STARGATE_ALL_BANK_QUERY_URL.to_string(), data: Binary(vec![]) })?;
+
 		Ok(Self{
-			storage: QuerierStorage { wasm, bank }
+			storage: get_querier_storage(&app.wrap())?
 		})
 	}
 
