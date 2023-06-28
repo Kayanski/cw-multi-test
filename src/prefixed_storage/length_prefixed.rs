@@ -6,7 +6,7 @@
 
 use cosmwasm_std::Addr;
 
-use crate::wasm_emulation::wasm::NAMESPACE_WASM;
+use crate::wasm::NAMESPACE_WASM;
 
 pub const CONTRACT_STORAGE_PREFIX: &str = "contract_data/";
 

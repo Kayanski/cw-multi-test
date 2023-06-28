@@ -1,3 +1,12 @@
+
+use crate::prefixed_storage::contract_namespace;
+use cosmwasm_std::CustomMsg;
+use cw_orch::prelude::queriers::DaemonQuerier;
+
+use cw_orch::daemon::queriers::CosmWasm;
+use ibc_chain_registry::chain::ChainData;
+
+
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
@@ -25,11 +34,19 @@ use cosmwasm_std::testing::mock_wasmd_attr;
 
 use anyhow::{bail, Context, Result as AnyResult};
 
+use crate::wasm_emulation::channel::get_channel;
+use crate::wasm_emulation::contract::WasmContract;
+use crate::wasm_emulation::input::{WasmStorage, SerChainData};
+use crate::wasm_emulation::query::AllQuerier;
+
 // Contract state is kept in Storage, separate from the contracts themselves
 const CONTRACTS: Map<&Addr, ContractData> = Map::new("contracts");
 
 pub const NAMESPACE_WASM: &[u8] = b"wasm";
 const CONTRACT_ATTR: &str = "_contract_addr";
+
+const LOCAL_CODE_OFFFSET: usize = 5_000_000;
+
 
 #[derive(Clone, std::fmt::Debug, PartialEq, Eq, JsonSchema)]
 pub struct WasmSudo {
@@ -62,7 +79,7 @@ pub struct ContractData {
     pub created: u64,
 }
 
-pub trait Wasm<ExecC, QueryC> {
+pub trait Wasm<ExecC, QueryC>: AllQuerier{
     /// Handles all WasmQuery requests
     fn query(
         &self,
@@ -96,13 +113,18 @@ pub trait Wasm<ExecC, QueryC> {
     ) -> AnyResult<AppResponse>;
 }
 
-pub struct WasmKeeper<ExecC, QueryC> {
+pub struct WasmKeeper<ExecC: 'static, QueryC: 'static> {
     /// code is in-memory lookup that stands in for wasm code
     /// this can only be edited on the WasmRouter, and just read in caches
-    codes: HashMap<usize, Box<dyn Contract<ExecC, QueryC>>>,
+    codes: HashMap<usize, WasmContract>,
     /// Just markers to make type elision fork when using it as `Wasm` trait
-    _p: std::marker::PhantomData<QueryC>,
+    /// Just markers to make type elision fork when using it as `Wasm` trait
+    _e: std::marker::PhantomData<ExecC>,
+    _q: std::marker::PhantomData<QueryC>,
     generator: Box<dyn AddressGenerator>,
+
+    // chain on which the contract should be queried/tested against
+    chain: Option<ChainData>
 }
 
 pub trait AddressGenerator {
@@ -126,19 +148,46 @@ impl AddressGenerator for SimpleAddressGenerator {
     }
 }
 
-impl<ExecC, QueryC> Default for WasmKeeper<ExecC, QueryC> {
-    fn default() -> Self {
-        Self {
-            codes: HashMap::default(),
-            _p: std::marker::PhantomData,
-            generator: Box::new(SimpleAddressGenerator()),
-        }
+impl<ExecC, QueryC> Default for WasmKeeper<ExecC, QueryC>{
+ fn default() -> WasmKeeper<ExecC, QueryC>{
+    Self{
+        codes: HashMap::new(),
+        _e: std::marker::PhantomData::default(),
+        _q: std::marker::PhantomData::default(),
+        generator: Box::new(SimpleAddressGenerator()),
+        chain: None
+    }
+ }
+}
+
+
+impl<ExecC, QueryC> AllQuerier for WasmKeeper<ExecC, QueryC>{
+    type Output = WasmStorage;
+    fn query_all(&self, storage: &dyn Storage,) -> AnyResult<WasmStorage>{
+        let all_local_state: Vec<_> = storage
+            .range(None, None, Order::Ascending)
+            .collect();
+
+        let contracts = CONTRACTS.range(&prefixed_read(storage, NAMESPACE_WASM), None, None, Order::Ascending)
+            .map(|res| match res{
+                Ok((key, value)) => Ok((key.to_string(), value)),
+                Err(e) => Err(e)
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        Ok(WasmStorage{
+            contracts,
+            storage: all_local_state,
+            codes: self.codes.clone()
+        })
     }
 }
 
+
+
 impl<ExecC, QueryC> Wasm<ExecC, QueryC> for WasmKeeper<ExecC, QueryC>
 where
-    ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
+    ExecC: CustomMsg + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
 {
     fn query(
@@ -205,27 +254,60 @@ where
 }
 
 impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
-    pub fn store_code(&mut self, code: Box<dyn Contract<ExecC, QueryC>>) -> usize {
-        let idx = self.codes.len() + 1;
+    pub fn store_code(&mut self, code: WasmContract) -> usize {
+        let idx = self.codes.len() + 1 + LOCAL_CODE_OFFFSET;
         self.codes.insert(idx, code);
         idx
     }
 
+    fn get_code(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<WasmContract>{
+        if let Ok(handler) = self.load_contract(storage, address){
+            let code = self.codes.get(&handler.code_id);
+            if let Some(code) = code{
+                return Ok(code.clone())
+            }else{
+                return Ok(WasmContract::new_distant_code_id(handler.code_id.try_into().unwrap(), self.chain.clone().unwrap()))
+            }
+        }
+
+        Ok(WasmContract::new_distant_contract(address.to_string(), self.chain.clone().unwrap()))
+    }
+
+    pub fn load_distant_contract(chain: impl Into<SerChainData>, address: &Addr) -> AnyResult<ContractData>{
+
+        let (rt, channel) = get_channel(chain)?;
+
+        let wasm_querier = CosmWasm::new(channel);
+
+        let code_info = rt.block_on(wasm_querier.contract_info(address.clone()))?;
+
+        Ok(ContractData{
+            admin: {
+                match code_info.admin.as_str(){
+                    "" => None,
+                    a => Some(Addr::unchecked(a))
+                }
+            },
+            code_id: code_info.code_id.try_into()?,
+            created: code_info.created.unwrap().block_height,
+            creator: Addr::unchecked(code_info.creator),
+            label: code_info.label
+        })
+    }
+
     pub fn load_contract(&self, storage: &dyn Storage, address: &Addr) -> AnyResult<ContractData> {
-        CONTRACTS
-            .load(&prefixed_read(storage, NAMESPACE_WASM), address)
-            .map_err(Into::into)
+
+        if let Ok(local_contract) = CONTRACTS
+            .load(&prefixed_read(storage, NAMESPACE_WASM), address){
+            return Ok(local_contract)
+        }
+
+        Self::load_distant_contract(self.chain.clone().unwrap(), address)
     }
 
     pub fn dump_wasm_raw(&self, storage: &dyn Storage, address: &Addr) -> Vec<Record> {
         let storage = self.contract_storage_readonly(storage, address);
         storage.range(None, None, Order::Ascending).collect()
-    }
-
-    fn contract_namespace(&self, contract: &Addr) -> Vec<u8> {
-        let mut name = b"contract_data/".to_vec();
-        name.extend_from_slice(contract.as_bytes());
-        name
     }
 
     fn contract_storage<'a>(
@@ -235,7 +317,7 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     ) -> Box<dyn Storage + 'a> {
         // We double-namespace this, once from global storage -> wasm_storage
         // then from wasm_storage -> the contracts subspace
-        let namespace = self.contract_namespace(address);
+        let namespace = contract_namespace(address);
         let storage = PrefixedStorage::multilevel(storage, &[NAMESPACE_WASM, &namespace]);
         Box::new(storage)
     }
@@ -248,12 +330,12 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     ) -> Box<dyn Storage + 'a> {
         // We double-namespace this, once from global storage -> wasm_storage
         // then from wasm_storage -> the contracts subspace
-        let namespace = self.contract_namespace(address);
+        let namespace = contract_namespace(address);
         let storage = ReadonlyPrefixedStorage::multilevel(storage, &[NAMESPACE_WASM, &namespace]);
         Box::new(storage)
     }
 
-    fn verify_attributes(attributes: &[Attribute]) -> AnyResult<()> {
+    fn verify_attributes(&self, attributes: &[Attribute]) -> AnyResult<()> {
         for attr in attributes {
             let key = attr.key.trim();
             let val = attr.value.trim();
@@ -274,14 +356,14 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
         Ok(())
     }
 
-    fn verify_response<T>(response: Response<T>) -> AnyResult<Response<T>>
+    fn verify_response<T>(&self, response: Response<T>) -> AnyResult<Response<T>>
     where
         T: Clone + fmt::Debug + PartialEq + JsonSchema,
     {
-        Self::verify_attributes(&response.attributes)?;
+        self.verify_attributes(&response.attributes)?;
 
         for event in &response.events {
-            Self::verify_attributes(&event.attributes)?;
+            self.verify_attributes(&event.attributes)?;
             let ty = event.ty.trim();
             if ty.len() < 2 {
                 bail!(Error::event_type_too_short(ty));
@@ -292,9 +374,11 @@ impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC> {
     }
 }
 
+
+
 impl<ExecC, QueryC> WasmKeeper<ExecC, QueryC>
 where
-    ExecC: Clone + fmt::Debug + PartialEq + JsonSchema + DeserializeOwned + 'static,
+    ExecC: CustomMsg + DeserializeOwned + 'static,
     QueryC: CustomQuery + DeserializeOwned + 'static,
 {
     pub fn new() -> Self {
@@ -302,12 +386,18 @@ where
     }
 
     pub fn new_with_custom_address_generator(generator: impl AddressGenerator + 'static) -> Self {
-        let default = Self::default();
+        let default = Self::new();
         Self {
             codes: default.codes,
-            _p: default._p,
+            _e: default._e,
+            _q: default._q,
             generator: Box::new(generator),
+        chain: None
         }
+    }
+
+    pub fn set_chain(&mut self, chain: ChainData){
+        self.chain = Some(chain);
     }
 
     pub fn query_smart(
@@ -325,7 +415,7 @@ where
             querier,
             block,
             address,
-            |handler, deps, env| handler.query(deps, env, msg),
+            |handler, deps, env| <WasmContract as Contract<ExecC, QueryC>>::query(&handler, deps, env, msg),
         )
     }
 
@@ -502,14 +592,12 @@ where
                 contract_addr,
                 new_code_id,
                 msg,
-            } => {
+            } => { // TODO
                 let contract_addr = api.addr_validate(&contract_addr)?;
 
                 // check admin status and update the stored code_id
                 let new_code_id = new_code_id as usize;
-                if !self.codes.contains_key(&new_code_id) {
-                    bail!("Cannot migrate contract to unregistered code id");
-                }
+
                 let mut data = self.load_contract(storage, &contract_addr)?;
                 if data.admin != Some(sender) {
                     bail!("Only admin can migrate contract: {:?}", data.admin);
@@ -706,7 +794,7 @@ where
     /// This just creates an address and empty storage instance, returning the new address
     /// You must call init after this to set up the contract properly.
     /// These are separated into two steps to have cleaner return values.
-    pub fn register_contract(
+    pub fn register_contract( // TODO
         &self,
         storage: &mut dyn Storage,
         code_id: usize,
@@ -715,9 +803,6 @@ where
         label: String,
         created: u64,
     ) -> AnyResult<Addr> {
-        if !self.codes.contains_key(&code_id) {
-            bail!("Cannot init contract with unregistered code id");
-        }
 
         let addr = self.generator.next_address(storage);
 
@@ -742,7 +827,7 @@ where
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        Self::verify_response(self.with_storage(
+        self.verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -762,7 +847,7 @@ where
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        Self::verify_response(self.with_storage(
+        self.verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -781,7 +866,7 @@ where
         block: &BlockInfo,
         reply: Reply,
     ) -> AnyResult<Response<ExecC>> {
-        Self::verify_response(self.with_storage(
+        self.verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -800,7 +885,7 @@ where
         block: &BlockInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        Self::verify_response(self.with_storage(
+        self.verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -819,7 +904,7 @@ where
         block: &BlockInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
-        Self::verify_response(self.with_storage(
+       self.verify_response(self.with_storage(
             api,
             storage,
             router,
@@ -849,13 +934,12 @@ where
         action: F,
     ) -> AnyResult<T>
     where
-        F: FnOnce(&Box<dyn Contract<ExecC, QueryC>>, Deps<QueryC>, Env) -> AnyResult<T>,
+        F: FnOnce(WasmContract, Deps<QueryC>, Env) -> AnyResult<T>,
     {
-        let contract = self.load_contract(storage, &address)?;
-        let handler = self
-            .codes
-            .get(&contract.code_id)
-            .ok_or(Error::UnregisteredCodeId(contract.code_id))?;
+
+        let handler = self.get_code(storage, &address)
+            .or(Err(Error::UnregisteredContractAddress(address.to_string())))?;
+
         let storage = self.contract_storage_readonly(storage, &address);
         let env = self.get_env(address, block);
 
@@ -877,14 +961,11 @@ where
         action: F,
     ) -> AnyResult<T>
     where
-        F: FnOnce(&Box<dyn Contract<ExecC, QueryC>>, DepsMut<QueryC>, Env) -> AnyResult<T>,
+        F: FnOnce(WasmContract, DepsMut<QueryC>, Env) -> AnyResult<T>,
         ExecC: DeserializeOwned,
     {
-        let contract = self.load_contract(storage, &address)?;
-        let handler = self
-            .codes
-            .get(&contract.code_id)
-            .ok_or(Error::UnregisteredCodeId(contract.code_id))?;
+        let handler = self.get_code(storage, &address)
+            .or(Err(Error::UnregisteredContractAddress(address.to_string())))?;
 
         // We don't actually need a transaction here, as it is already embedded in a transactional.
         // execute_submsg or App.execute_multi.
@@ -900,7 +981,7 @@ where
                 api: api.deref(),
                 querier: QuerierWrapper::new(&querier),
             };
-            action(handler, deps, env)
+            action(handler.clone(), deps, env)
         })
     }
 
@@ -954,4 +1035,32 @@ fn execute_response(data: Option<Binary>) -> Option<Binary> {
         exec_data.encode(&mut new_data).unwrap();
         new_data.into()
     })
+}
+
+
+
+
+#[cfg(test)]
+mod test{
+
+    use cosmwasm_std::Empty;
+use cw_orch::daemon::networks::JUNO_1;
+    use crate::{AppBuilder, FailingModule};
+    use super::*;
+    // For testing, we simply create a app instance and add this new wasm executor as wasm instance
+
+
+
+    #[test]
+    fn add_wasm_file_keeper(){
+
+        let app = AppBuilder::default();
+        let mut wasm = WasmKeeper::<Empty, Empty>::new();
+        wasm.set_chain(JUNO_1.into());
+        app.with_wasm::<FailingModule<Empty, Empty, Empty>, _>(wasm);
+
+    }
+
+
+
 }

@@ -1,8 +1,8 @@
-use crate::wasm_emulation::bank::BankKeeper;
+use crate::bank::BankKeeper;
 use crate::prefixed_storage::get_full_contract_storage_namespace;
 
 use std::collections::HashMap;
-use crate::wasm_emulation::wasm::ContractData;
+use crate::wasm::ContractData;
 use cosmwasm_std::Addr;
 use cosmwasm_std::Binary;
 use cosmwasm_std::CustomQuery;

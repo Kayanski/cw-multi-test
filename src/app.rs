@@ -16,7 +16,7 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::wasm_emulation::bank::{Bank, BankKeeper, BankSudo};
+use crate::bank::{Bank, BankKeeper, BankSudo};
 use crate::executor::{AppResponse, Executor};
 use crate::gov::Gov;
 use crate::ibc::Ibc;
@@ -24,7 +24,7 @@ use crate::module::{FailingModule, Module};
 use crate::staking::{Distribution, DistributionKeeper, StakeKeeper, Staking, StakingSudo};
 use crate::transactions::transactional;
 use crate::wasm_emulation::contract::WasmContract;
-use crate::wasm_emulation::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
+use crate::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
 
 use crate::wasm_emulation::input::STARGATE_ALL_BANK_QUERY_URL;
 use crate::wasm_emulation::input::STARGATE_ALL_WASM_QUERY_URL;

@@ -13,7 +13,7 @@ use cw_orch::prelude::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
 use serde::__private::from_utf8_lossy;
 
-use crate::wasm_emulation::wasm::NAMESPACE_WASM;
+use crate::wasm::NAMESPACE_WASM;
 
 use crate::{App, wasm_emulation::input::{QuerierStorage}};
 
