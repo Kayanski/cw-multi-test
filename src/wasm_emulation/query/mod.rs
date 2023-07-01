@@ -6,7 +6,7 @@ use serde::{de::DeserializeOwned};
 use cosmwasm_std::Storage;
 
 pub use mock_querier::MockQuerier;
-
+pub mod gas;
 
 use anyhow::Result as AnyResult;
 use serde::Serialize;

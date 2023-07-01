@@ -1,4 +1,6 @@
 
+use crate::wasm_emulation::query::gas::{GAS_COST_RAW_COSMWASM_QUERY, GAS_COST_CONTRACT_INFO};
+use crate::wasm_emulation::query::mock_querier::QueryResultWithGas;
 use crate::prefixed_storage::get_full_contract_storage_namespace;
 
 use crate::wasm_emulation::input::SerChainData;
@@ -7,6 +9,7 @@ use crate::wasm_emulation::input::WasmFunction;
 use crate::wasm_emulation::output::WasmOutput;
 use crate::wasm_emulation::output::WasmRunnerOutput;
 use cosmwasm_std::testing::mock_env;
+use cosmwasm_vm::GasInfo;
 use cw_orch::prelude::queriers::DaemonQuerier;
 use crate::wasm_emulation::contract::WasmContract;
 
@@ -17,7 +20,7 @@ use cw_orch::prelude::queriers::CosmWasm;
 
 use cosmwasm_std::WasmQuery;
 
-use cosmwasm_std::{QuerierResult};
+
 
 
 use crate::WasmKeeper;
@@ -40,7 +43,7 @@ impl WasmQuerier {
         }
     }
 
-    pub fn query(&self, request: &WasmQuery) -> QuerierResult {
+    pub fn query(&self, request: &WasmQuery) -> QueryResultWithGas {
 
         match request{
             WasmQuery::ContractInfo { contract_addr } =>{
@@ -54,7 +57,7 @@ impl WasmQuerier {
                 response.code_id = data.code_id.try_into().unwrap();
                 response.creator = data.creator.to_string();
                 response.admin = data.admin.map(|a| a.to_string());
-                SystemResult::Ok(to_binary(&response).into())
+                (SystemResult::Ok(to_binary(&response).into()), GasInfo::with_externally_used(GAS_COST_CONTRACT_INFO))
             },
             WasmQuery::Raw { contract_addr, key } => {
                 // We first try to load that information locally
@@ -75,7 +78,7 @@ impl WasmQuerier {
                     query_result   .unwrap()
                 };
 
-                SystemResult::Ok(ContractResult::Ok(value.into()))
+                (SystemResult::Ok(ContractResult::Ok(value.into())), GasInfo::with_externally_used(GAS_COST_RAW_COSMWASM_QUERY))
             },
             WasmQuery::Smart { contract_addr, msg } => {
                 let addr = Addr::unchecked(contract_addr);
@@ -108,7 +111,7 @@ impl WasmQuerier {
                     _ => panic!("Unexpected contract response, not possible")
                 };
 
-                SystemResult::Ok(ContractResult::Ok(bin))
+                (SystemResult::Ok(ContractResult::Ok(bin)), GasInfo::with_externally_used(result.gas_used))
             }
             _ => unimplemented!()
         }

@@ -1,4 +1,5 @@
 
+use cosmwasm_vm::Checksum;
 use cosmwasm_std::StdError;
 use cosmwasm_vm::call_execute;
 use cosmwasm_vm::BackendApi;
@@ -37,9 +38,8 @@ use serde::de::DeserializeOwned;
 use crate::wasm_emulation::input::InstanceArguments;
 use crate::wasm_emulation::output::WasmRunnerOutput;
 
-
-
 use std::collections::HashSet;
+
 use cosmwasm_vm::internals::check_wasm;
 
 use crate::Contract;
@@ -48,7 +48,7 @@ use cosmwasm_std::{
     Binary, CustomQuery, Deps, DepsMut, Env, MessageInfo, Reply, Response,
 };
 
-use anyhow::{Result as AnyResult};
+use anyhow::Result as AnyResult;
 
 use super::channel::get_channel;
 use super::input::ExecuteArgs;
@@ -72,6 +72,9 @@ fn apply_storage_changes<ExecC>(storage: &mut dyn Storage, output: &WasmRunnerOu
     }
 } 
 
+
+
+
 /// Taken from cosmwasm_vm::testing
 /// This gas limit is used in integration tests and should be high enough to allow a reasonable
 /// number of contract executions and queries on one instance. For this reason it is significatly
@@ -93,7 +96,7 @@ pub struct DistantCodeId{
     pub chain: SerChainData,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct LocalContract{
     pub code: Vec<u8>,
     pub chain: SerChainData,
@@ -106,9 +109,19 @@ pub enum WasmContract{
     DistantCodeId(DistantCodeId),
 }
 
+impl std::fmt::Debug for LocalContract{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "LocalContract {{ checksum: {}, chain: {:?} }}", Checksum::generate(&self.code), self.chain)
+    }
+}
+
 impl WasmContract{
     pub fn new_local(code: Vec<u8>, chain: impl Into<SerChainData>) -> Self{
-        check_wasm(&code, &HashSet::from(["iterator".to_string()])).unwrap();
+        check_wasm(&code, &HashSet::from([
+            "iterator".to_string(),
+            "staking".to_string(), 
+            "stargate".to_string()
+        ])).unwrap();
         Self::Local(LocalContract { code, chain: chain.into() })
     }
 
@@ -183,8 +196,12 @@ impl WasmContract{
         // Then we create the instance
         let mut instance = Instance::from_code(&code, backend, options, memory_limit)?;
 
+        let gas_before = instance.get_gas_left();
+
         // Then we call the function that we wanted to call
         let result = execute_function(&mut instance, function)?;
+
+        let gas_after = instance.get_gas_left();
 
         // We return the code response + any storage change (or the whole local storage object), with serializing
         let mut recycled_instance = instance.recycle().unwrap();
@@ -194,10 +211,25 @@ impl WasmContract{
                 current_keys: recycled_instance.storage.get_all_storage()?,
                 removed_keys: recycled_instance.storage.removed_keys.into_iter().collect(),
             },
+            gas_used: gas_before - gas_after,
             wasm: result,
         };
 
         Ok(wasm_result)
+    }
+
+    pub fn after_execution_callback<ExecC>(&self,  output: &WasmRunnerOutput<ExecC>){
+        // We log the gas used
+        print!("Gas used {:?} for ", output.gas_used);
+        match output.wasm{
+            WasmOutput::Execute(_) => print!("execution"),
+            WasmOutput::Query(_) => print!("query"),
+            WasmOutput::Instantiate(_) => print!("instantiation"),
+            WasmOutput::Migrate(_) => print!("migration"),
+            WasmOutput::Sudo(_) => print!("sudo"),
+            WasmOutput::Reply(_) => print!("reply"),
+        }
+        println!(" on contract {:?}. ", self);
     }
 }
 
@@ -211,10 +243,12 @@ where
     fn execute(
         &self,
         deps: DepsMut<QueryC>,
-        env: Env,
+        mut env: Env,
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
+
+        env.block.chain_id = self.get_chain().chain_id.to_string();
 
         // We start by building the dependencies we will pass through the wasm executer
         let execute_args = InstanceArguments{
@@ -230,6 +264,7 @@ where
         let decoded_result = self.run_contract(execute_args)?;
 
         apply_storage_changes(deps.storage, &decoded_result);
+        self.after_execution_callback(&decoded_result);
 
         match decoded_result.wasm{
             WasmOutput::Execute(x)=> Ok(x),
@@ -241,10 +276,11 @@ where
     fn instantiate(
         &self,
         deps: DepsMut<QueryC>,
-        env: Env,
+        mut env: Env,
         info: MessageInfo,
         msg: Vec<u8>,
     ) -> AnyResult<Response<ExecC>> {
+        env.block.chain_id = self.get_chain().chain_id.to_string();
         // We start by building the dependencies we will pass through the wasm executer
         let instantiate_arguments = InstanceArguments{
             function: WasmFunction::Instantiate(InstantiateArgs{
@@ -259,6 +295,7 @@ where
         let decoded_result = self.run_contract(instantiate_arguments)?;
 
         apply_storage_changes(deps.storage, &decoded_result);
+        self.after_execution_callback(&decoded_result);
 
         match decoded_result.wasm{
             WasmOutput::Instantiate(x)=> Ok(x),
@@ -266,7 +303,9 @@ where
         }
     }
 
-    fn query(&self, deps: Deps<QueryC>, env: Env, msg: Vec<u8>) -> AnyResult<Binary> {
+    fn query(&self, deps: Deps<QueryC>, mut env: Env, msg: Vec<u8>) -> AnyResult<Binary> {
+        env.block.chain_id = self.get_chain().chain_id.to_string();
+
         // We start by building the dependencies we will pass through the wasm executer
         let query_arguments = InstanceArguments{
             function: WasmFunction::Query(QueryArgs{
@@ -279,6 +318,8 @@ where
 
         let decoded_result: WasmRunnerOutput<Empty> = self.run_contract(query_arguments)?;
 
+        self.after_execution_callback(&decoded_result);
+
         match decoded_result.wasm{
             WasmOutput::Query(x)=> Ok(x),
             _ => panic!("Wrong kind of answer from wasm container")
@@ -286,7 +327,8 @@ where
     }
 
     // this returns an error if the contract doesn't implement sudo
-    fn sudo(&self, deps: DepsMut<QueryC>, env: Env, msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
+    fn sudo(&self, deps: DepsMut<QueryC>, mut env: Env, msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
+        env.block.chain_id = self.get_chain().chain_id.to_string();
         let sudo_args = InstanceArguments{
             function: WasmFunction::Sudo(SudoArgs{
                 env,
@@ -299,6 +341,7 @@ where
         let decoded_result = self.run_contract(sudo_args)?;
 
         apply_storage_changes(deps.storage, &decoded_result);
+        self.after_execution_callback(&decoded_result);
 
         match decoded_result.wasm{
             WasmOutput::Sudo(x)=> Ok(x),
@@ -307,7 +350,8 @@ where
     }
 
     // this returns an error if the contract doesn't implement reply
-    fn reply(&self, deps: DepsMut<QueryC>, env: Env, reply: Reply) -> AnyResult<Response<ExecC>> {
+    fn reply(&self, deps: DepsMut<QueryC>, mut env: Env, reply: Reply) -> AnyResult<Response<ExecC>> {
+        env.block.chain_id = self.get_chain().chain_id.to_string();
         let reply_args = InstanceArguments{
             function: WasmFunction::Reply(ReplyArgs{
                 env,
@@ -320,6 +364,7 @@ where
         let decoded_result = self.run_contract(reply_args)?;
 
         apply_storage_changes(deps.storage, &decoded_result);
+        self.after_execution_callback(&decoded_result);
 
         match decoded_result.wasm{
             WasmOutput::Reply(x)=> Ok(x),
@@ -328,7 +373,8 @@ where
     }
 
     // this returns an error if the contract doesn't implement migrate
-    fn migrate(&self, deps: DepsMut<QueryC>, env: Env, msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
+    fn migrate(&self, deps: DepsMut<QueryC>, mut env: Env, msg: Vec<u8>) -> AnyResult<Response<ExecC>> {
+        env.block.chain_id = self.get_chain().chain_id.to_string();
         let migrate_args = InstanceArguments{
             function: WasmFunction::Migrate(MigrateArgs{
                 env,
@@ -341,6 +387,7 @@ where
         let decoded_result = self.run_contract(migrate_args)?;
 
         apply_storage_changes(deps.storage, &decoded_result);
+        self.after_execution_callback(&decoded_result);
 
         match decoded_result.wasm{
             WasmOutput::Migrate(x)=> Ok(x),

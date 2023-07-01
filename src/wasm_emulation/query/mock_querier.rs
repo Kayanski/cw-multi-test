@@ -22,13 +22,19 @@ use cosmwasm_std::{
     FullDelegation, Validator,
 };
 use cosmwasm_std::{ContractResult, Empty, SystemResult};
-use cosmwasm_std::{from_slice};
+use cosmwasm_std::from_slice;
 
-use cosmwasm_std::{Querier, QuerierResult};
+use cosmwasm_std::QuerierResult;
 use cosmwasm_std::Attribute;
 
 
 use crate::wasm_emulation::input::QuerierStorage;
+
+use super::gas::GAS_COST_QUERY_ERROR;
+
+
+pub type QueryResultWithGas = (QuerierResult, GasInfo);
+
 
 
 /// The same type as cosmwasm-std's QuerierResult, but easier to reuse in
@@ -46,7 +52,7 @@ pub struct MockQuerier<C: DeserializeOwned = Empty> {
     /// always errors by default. Update it via `with_custom_handler`.
     ///
     /// Use box to avoid the need of another generic type
-    custom_handler: Box<dyn for<'a> Fn(&'a C) -> MockQuerierCustomHandlerResult>,
+    custom_handler: Box<dyn for<'a> Fn(&'a C) -> QueryResultWithGas>,
 }
 
 impl<C: DeserializeOwned> MockQuerier<C> {
@@ -58,10 +64,13 @@ impl<C: DeserializeOwned> MockQuerier<C> {
             staking: StakingQuerier::default(),
             wasm: WasmQuerier::new(chain, storage),
             // strange argument notation suggested as a workaround here: https://github.com/rust-lang/rust/issues/41078#issuecomment-294296365
-            custom_handler: Box::from(|_: &_| -> MockQuerierCustomHandlerResult {
-                SystemResult::Err(SystemError::UnsupportedRequest {
-                    kind: "custom".to_string(),
-                })
+            custom_handler: Box::from(|_: &_| -> QueryResultWithGas {
+                (
+                    SystemResult::Err(SystemError::UnsupportedRequest {
+                        kind: "custom".to_string(),
+                    }),
+                    GasInfo::free()
+                )
             }),
         }
     }
@@ -87,47 +96,42 @@ impl<C: DeserializeOwned> MockQuerier<C> {
 
     pub fn with_custom_handler<CH: 'static>(mut self, handler: CH) -> Self
     where
-        CH: Fn(&C) -> MockQuerierCustomHandlerResult,
+        CH: Fn(&C) -> QueryResultWithGas,
     {
         self.custom_handler = Box::from(handler);
         self
     }
 }
 
-impl<C: CustomQuery + DeserializeOwned> Querier for MockQuerier<C> {
-    fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
+impl<C: CustomQuery + DeserializeOwned> cosmwasm_vm::Querier for MockQuerier<C> {
+    fn query_raw(&self, bin_request: &[u8], _gas_limit: u64) -> BackendResult<SystemResult<ContractResult<Binary>>> {
+
         let request: QueryRequest<C> = match from_slice(bin_request) {
             Ok(v) => v,
             Err(e) => {
-                return SystemResult::Err(SystemError::InvalidRequest {
+                return (Ok(SystemResult::Err(SystemError::InvalidRequest {
                     error: format!("Parsing query request: {}", e),
                     request: bin_request.into(),
-                })
+                })), GasInfo::with_externally_used(GAS_COST_QUERY_ERROR))
             }
         };
-        self.handle_query(&request)
-    }
-}
+        let result = self.handle_query(&request);
 
-impl<C: CustomQuery + DeserializeOwned> cosmwasm_vm::Querier for MockQuerier<C> {
-    fn query_raw(&self, bin_request: &[u8], _gas_limit: u64) -> BackendResult<SystemResult<ContractResult<Binary>>> {
-       let result = self.raw_query(bin_request);
-
-       (Ok(result), GasInfo::free())
+        (Ok(result.0), result.1)
     }
 }
 
 impl<C: CustomQuery + DeserializeOwned> MockQuerier<C> {
-    pub fn handle_query(&self, request: &QueryRequest<C>) -> QuerierResult {
+    pub fn handle_query(&self, request: &QueryRequest<C>) -> QueryResultWithGas {
         match &request {
             QueryRequest::Bank(bank_query) => self.bank.query(bank_query),
             QueryRequest::Custom(custom_query) => (*self.custom_handler)(custom_query),
             
             QueryRequest::Staking(staking_query) => self.staking.query(staking_query),
             QueryRequest::Wasm(msg) => self.wasm.query(msg),
-            QueryRequest::Stargate { .. } => SystemResult::Err(SystemError::UnsupportedRequest {
+            QueryRequest::Stargate { .. } => (SystemResult::Err(SystemError::UnsupportedRequest {
                 kind: "Stargate".to_string(),
-            }),
+            }),GasInfo::with_externally_used(GAS_COST_QUERY_ERROR)),
             &_ => panic!("Query Type Not implemented")
         }
     }

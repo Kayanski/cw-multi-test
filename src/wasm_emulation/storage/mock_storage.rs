@@ -7,11 +7,12 @@ use cosmwasm_std::{Order, Record};
 use cosmwasm_vm::BackendError;
 use cosmwasm_vm::{BackendResult, GasInfo, Storage};
 
-const GAS_COST_LAST_ITERATION: u64 = 37;
+pub const GAS_COST_LAST_ITERATION: u64 = 37;
 
-const GAS_COST_RANGE: u64 = 11;
+pub const GAS_COST_RANGE: u64 = 11;
 
 // We needed to add the peak function on the cosmwasm-vm code
+// This is used for making sure we have the right order between distant and local storage
 
 #[derive(Default, Debug)]
 struct Iter {

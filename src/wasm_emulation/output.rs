@@ -22,5 +22,6 @@ pub struct StorageChanges{
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WasmRunnerOutput<T>{
 	pub wasm: WasmOutput<T>,
-	pub storage: StorageChanges
+	pub storage: StorageChanges,
+	pub gas_used: u64,
 }

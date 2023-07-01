@@ -1,8 +1,6 @@
-use bech32::{ToBase32, Variant};
-use bech32::FromBase32;
-use cosmwasm_vm::BackendError;
-use cosmwasm_vm::GasInfo;
-use cosmwasm_vm::BackendApi;
+use bech32::{ToBase32, Variant,FromBase32};
+use cosmwasm_vm::{BackendError,GasInfo,BackendApi};
+use crate::wasm_emulation::query::gas::{GAS_COST_CANONICALIZE, GAS_COST_HUMANIZE};
 
 const SHORT_CANON_LEN: usize = 40;
 const LONG_CANON_LEN: usize = 64;
@@ -24,10 +22,8 @@ pub fn bytes_from_bech32(address: &str, prefix: &str) -> Result<Vec<u8>, Backend
 	Ok(Vec::<u8>::from_base32(&data).unwrap())
 }
 
-
 // Prefixes are limited to 6 chars 
-// This allows one to specify a string prefix and still implement Clone
-
+// This allows one to specify a string prefix and still implement Copy
 #[derive(Clone, Copy)]
 pub struct RealApi{
 	pub prefix1: Option<char>,
@@ -67,11 +63,10 @@ impl RealApi{
 }
 
 
-
 impl BackendApi for RealApi{
 
 	fn canonical_address(&self, address: &str) -> (Result<Vec<u8>, BackendError>, GasInfo) { 
-		let gas_cost = GasInfo::free();
+		let gas_cost = GasInfo::with_externally_used(GAS_COST_CANONICALIZE);
 		if address.trim().is_empty(){
 			return (Err(BackendError::Unknown { msg: "empty address string is not allowed".to_string() }), gas_cost)
 		}
@@ -79,7 +74,7 @@ impl BackendApi for RealApi{
 		(bytes_from_bech32(address, &self.get_prefix()), gas_cost)
 	}
 	fn human_address(&self, canon: &[u8]) -> (Result<String, BackendError>, GasInfo) { 
-		let gas_cost = GasInfo::free();
+		let gas_cost = GasInfo::with_externally_used(GAS_COST_HUMANIZE);
 
 		if canon.len() == SHORT_CANON_LEN || canon.len() == LONG_CANON_LEN{
 			return (Err(BackendError::Unknown { msg: "Canon address doesn't have the right length".to_string() }), gas_cost);

@@ -1,3 +1,6 @@
+use crate::wasm_emulation::query::gas::{GAS_COST_BALANCE_QUERY, GAS_COST_ALL_BALANCE_QUERY};
+use cosmwasm_vm::GasInfo;
+use crate::wasm_emulation::query::mock_querier::QueryResultWithGas;
 use crate::wasm_emulation::input::SerChainData;
 use cosmwasm_std::Addr;
 use std::str::FromStr;
@@ -21,14 +24,10 @@ use cosmwasm_std::{
 };
 
 use cosmwasm_std::{ContractResult, SystemResult};
-use cosmwasm_std::{to_binary};
-
-use cosmwasm_std::{QuerierResult};
+use cosmwasm_std::to_binary;
 
 
 use crate::wasm_emulation::channel::get_channel;
-
-
 
 
 #[derive(Clone)]
@@ -82,7 +81,7 @@ impl BankQuerier {
         supplies
     }
 
-    pub fn query(&self, request: &BankQuery) -> QuerierResult {
+    pub fn query(&self, request: &BankQuery) -> QueryResultWithGas {
 
         let contract_result: ContractResult<Binary> = match request {
             BankQuery::Balance { address, denom } => {
@@ -147,7 +146,15 @@ impl BankQuerier {
             },
             &_ => panic!("Not implemented {:?}", request)
         };
+
+        // We handle the gas_info
+        let gas_info = match request{
+            BankQuery::Balance { .. } => GAS_COST_BALANCE_QUERY,
+            BankQuery::AllBalances { .. } => GAS_COST_ALL_BALANCE_QUERY,
+            &_ => panic!("Not implemented {:?}", request)
+        };
+
         // system result is always ok in the mock implementation
-        SystemResult::Ok(contract_result)
+        (SystemResult::Ok(contract_result), GasInfo::with_externally_used(gas_info))
     }
 }

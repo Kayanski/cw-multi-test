@@ -1,37 +1,43 @@
-use crate::bank::BankKeeper;
-use crate::prefixed_storage::get_full_contract_storage_namespace;
 
 use std::collections::HashMap;
-use crate::wasm::ContractData;
-use cosmwasm_std::Addr;
-use cosmwasm_std::Binary;
-use cosmwasm_std::CustomQuery;
+
+use anyhow::Result as AnyResult;
+use serde::{Serialize, Deserialize};
+
 
 use cosmwasm_std::QuerierWrapper;
 use cosmwasm_std::QueryRequest;
+use cosmwasm_std::Addr;
+use cosmwasm_std::Binary;
+use cosmwasm_std::CustomQuery;
+use cosmwasm_std::{Env, MessageInfo, Reply};
 
 use cw_orch::daemon::ChainInfo;
 use cw_utils::NativeBalance;
-
-
-use cosmwasm_std::{Env, MessageInfo, Reply};
 use ibc_chain_registry::chain::Apis;
 use ibc_chain_registry::chain::ChainData;
 use ibc_relayer_types::core::ics24_host::identifier::ChainId;
-use serde::{Serialize, Deserialize};
 
+use crate::bank::BankKeeper;
+use crate::prefixed_storage::get_full_contract_storage_namespace;
+use crate::wasm::ContractData;
 
 use super::contract::WasmContract;
 use super::query::AllQuerier;
 
-use anyhow::Result as AnyResult;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SerChainData{
     pub chain_id: ChainId,
     pub apis: Apis,
     pub bech32_prefix: String
 }
+
+impl std::fmt::Debug for SerChainData{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "Chain {{ chain_id: {:?} }}", self.chain_id)
+    }
+}
+
 
 impl From<ChainData> for SerChainData{
 	fn from(c: ChainData) -> SerChainData{

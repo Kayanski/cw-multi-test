@@ -91,11 +91,21 @@ impl StorageAnalyzer{
 				let distant_data = rt.block_on(wasm_querier.contract_raw_state(contract_addr.clone(), key.clone()));
 
 				if let Ok(data) = distant_data{
-					let local_json: Json = from_utf8_lossy(&value).to_string().parse().unwrap();
-					let distant_json: Json = from_utf8_lossy(&data.data).to_string().parse().unwrap();
+					let local_json: Json = if let Ok(v) = from_utf8_lossy(&value).to_string().parse(){
+						v
+					}else{
+						log::info!("Storage at {}, and key {}, was : {:x?}, now {:x?}",contract_addr, from_utf8_lossy(&key).to_string(), data.data, value );
+						return;
+					};
+					let distant_json: Json = if let Ok(v) = from_utf8_lossy(&data.data).to_string().parse(){
+						v
+					}else{
+						log::info!("Storage at {}, and key {}, was : {:x?}, now {:x?}",contract_addr, from_utf8_lossy(&key).to_string(), data.data, value );
+						return;
+					};
 
 			        let mut d = Recorder::default();
-			        diff(&local_json, &distant_json, &mut d);
+			        diff(&distant_json, &local_json, &mut d);
 
 			        let changes: Vec<_> = d.calls.iter().filter(|change| !matches!(change, treediff::tools::ChangeType::Unchanged(..))).collect();
 
