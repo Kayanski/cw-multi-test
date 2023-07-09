@@ -1,7 +1,7 @@
 use crate::wasm_emulation::input::BankStorage;
-use std::str::FromStr;
-use cosmwasm_std::{Uint128, Order};
+use cosmwasm_std::{Order, Uint128};
 use cw_orch_daemon::queriers::DaemonQuerier;
+use std::str::FromStr;
 
 use ibc_chain_registry::chain::ChainData;
 
@@ -41,7 +41,7 @@ pub trait Bank: Module<ExecT = BankMsg, QueryT = BankQuery, SudoT = BankSudo> + 
 
 #[derive(Default)]
 pub struct BankKeeper {
-    chain: Option<ChainData>
+    chain: Option<ChainData>,
 }
 
 impl BankKeeper {
@@ -49,8 +49,8 @@ impl BankKeeper {
         BankKeeper::default()
     }
 
-    pub fn set_chain(&mut self, chain: ChainData){
-       self.chain = Some(chain)
+    pub fn set_chain(&mut self, chain: ChainData) {
+        self.chain = Some(chain)
     }
 
     // this is an "admin" function to let us adjust bank accounts in genesis
@@ -80,22 +80,23 @@ impl BankKeeper {
     // this is an "admin" function to let us adjust bank accounts
     fn get_balance(&self, bank_storage: &dyn Storage, account: &Addr) -> AnyResult<Vec<Coin>> {
         // If there is no balance present, we query it on the distant chain
-        if !BALANCES.has(bank_storage, account){
+        if !BALANCES.has(bank_storage, account) {
             let (rt, channel) = get_channel(self.chain.clone().unwrap())?;
             let querier = cw_orch_daemon::queriers::Bank::new(channel);
             let distant_amounts: Vec<Coin> = rt
                 .block_on(querier.balance(account, None))
-                .map(|result| result
+                .map(|result| {
+                    result
                         .into_iter()
                         .map(|c| Coin {
                             amount: Uint128::from_str(&c.amount).unwrap(),
                             denom: c.denom,
                         })
                         .collect()
-                )
+                })
                 .unwrap();
             Ok(distant_amounts)
-        }else{
+        } else {
             let val = BALANCES.may_load(bank_storage, account)?;
             Ok(val.unwrap_or_default().into_vec())
         }
@@ -156,16 +157,14 @@ fn coins_to_string(coins: &[Coin]) -> String {
 
 impl Bank for BankKeeper {}
 
-impl AllQuerier for BankKeeper{
+impl AllQuerier for BankKeeper {
     type Output = BankStorage;
-    fn query_all(&self, storage: &dyn Storage,) -> AnyResult<BankStorage>{
+    fn query_all(&self, storage: &dyn Storage) -> AnyResult<BankStorage> {
         let bank_storage = prefixed_read(storage, NAMESPACE_BANK);
         let balances: Result<Vec<_>, _> = BALANCES
             .range(&bank_storage, None, None, Order::Ascending)
             .collect();
-        Ok(BankStorage{
-            storage: balances?
-        })
+        Ok(BankStorage { storage: balances? })
     }
 }
 

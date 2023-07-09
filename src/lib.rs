@@ -10,7 +10,6 @@ mod app;
 mod bank;
 #[allow(clippy::type_complexity)]
 mod contracts;
-pub mod wasm_emulation;
 pub mod custom_handler;
 pub mod error;
 mod executor;
@@ -21,6 +20,7 @@ pub(crate) mod prefixed_storage;
 mod staking;
 mod transactions;
 mod wasm;
+pub mod wasm_emulation;
 
 pub use crate::app::{
     custom_app, next_block, App, AppBuilder, BasicApp, BasicAppBuilder, CosmosRouter, Router,
@@ -36,4 +36,3 @@ pub use crate::staking::{
     Distribution, DistributionKeeper, StakeKeeper, Staking, StakingInfo, StakingSudo,
 };
 pub use crate::wasm::{AddressGenerator, Wasm, WasmKeeper, WasmSudo};
-

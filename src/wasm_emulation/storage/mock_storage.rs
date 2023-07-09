@@ -51,21 +51,18 @@ impl MockStorage {
         (Ok(out), total)
     }
 
-    pub fn peak(&mut self, iterator_id: u32) -> Result<Option<Record>, BackendError>{
+    pub fn peak(&mut self, iterator_id: u32) -> Result<Option<Record>, BackendError> {
         let iterator = match self.iterators.get(&iterator_id) {
             Some(i) => i,
-            None => {
-                return Err(BackendError::iterator_does_not_exist(iterator_id))
-            }
+            None => return Err(BackendError::iterator_does_not_exist(iterator_id)),
         };
 
-        let value : Option<Record> =
-            if iterator.data.len() > iterator.position {
-                let item = iterator.data[iterator.position].clone();
-                Some(item)
-            } else {
-                None
-            };
+        let value: Option<Record> = if iterator.data.len() > iterator.position {
+            let item = iterator.data[iterator.position].clone();
+            Some(item)
+        } else {
+            None
+        };
 
         Ok(value)
     }
@@ -77,7 +74,6 @@ impl Storage for MockStorage {
         (Ok(self.data.get(key).cloned()), gas_info)
     }
 
-    
     fn scan(
         &mut self,
         start: Option<&[u8]>,
@@ -112,7 +108,6 @@ impl Storage for MockStorage {
         (Ok(new_id), gas_info)
     }
 
-    
     fn next(&mut self, iterator_id: u32) -> BackendResult<Option<Record>> {
         let iterator = match self.iterators.get_mut(&iterator_id) {
             Some(i) => i,
@@ -150,7 +145,6 @@ impl Storage for MockStorage {
     }
 }
 
-
 fn range_bounds(start: Option<&[u8]>, end: Option<&[u8]>) -> impl RangeBounds<Vec<u8>> {
     (
         start.map_or(Bound::Unbounded, |x| Bound::Included(x.to_vec())),
@@ -158,11 +152,9 @@ fn range_bounds(start: Option<&[u8]>, end: Option<&[u8]>) -> impl RangeBounds<Ve
     )
 }
 
-
 /// The BTreeMap specific key-value pair reference type, as returned by BTreeMap<Vec<u8>, Vec<u8>>::range.
 /// This is internal as it can change any time if the map implementation is swapped out.
 type BTreeMapRecordRef<'a> = (&'a Vec<u8>, &'a Vec<u8>);
-
 
 fn clone_item(item_ref: BTreeMapRecordRef) -> Record {
     let (key, value) = item_ref;
@@ -194,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    
+
     fn iterator() {
         let mut store = MockStorage::new();
         store.set(b"foo", b"bar").0.expect("error setting value");

@@ -10,7 +10,6 @@ use crate::wasm::NAMESPACE_WASM;
 
 pub const CONTRACT_STORAGE_PREFIX: &str = "contract_data/";
 
-
 /// Calculates the raw key prefix for a given namespace as documented
 /// in https://github.com/webmaster128/key-namespacing#length-prefixed-keys
 pub fn to_length_prefixed(namespace: &[u8]) -> Vec<u8> {
@@ -50,20 +49,16 @@ pub fn decode_length(bytes: [u8; 2]) -> u32 {
     u32::from_be_bytes([0, 0, bytes[0], bytes[1]])
 }
 
-
-
 pub fn contract_namespace(contract: &Addr) -> Vec<u8> {
     let mut name = CONTRACT_STORAGE_PREFIX.as_bytes().to_vec();
     name.extend_from_slice(contract.as_bytes());
     name
 }
 
-pub fn get_full_contract_storage_namespace(contract_addr: &Addr) -> Vec<u8>{
+pub fn get_full_contract_storage_namespace(contract_addr: &Addr) -> Vec<u8> {
     let namespace = contract_namespace(contract_addr);
     to_length_prefixed_nested(&[NAMESPACE_WASM, &namespace])
 }
-
-
 
 #[cfg(test)]
 mod tests {

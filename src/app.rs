@@ -1,8 +1,7 @@
 use crate::wasm_emulation::api::RealApi;
-use cw_storage_plus::Item;
 use cosmwasm_std::CustomMsg;
+use cw_storage_plus::Item;
 use ibc_chain_registry::chain::ChainData;
-
 
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
@@ -26,14 +25,13 @@ use crate::ibc::Ibc;
 use crate::module::{FailingModule, Module};
 use crate::staking::{Distribution, DistributionKeeper, StakeKeeper, Staking, StakingSudo};
 use crate::transactions::transactional;
-use crate::wasm_emulation::contract::WasmContract;
 use crate::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
+use crate::wasm_emulation::contract::WasmContract;
 
 use crate::wasm_emulation::input::STARGATE_ALL_BANK_QUERY_URL;
 use crate::wasm_emulation::input::STARGATE_ALL_WASM_QUERY_URL;
 
 const ADDRESSES: Item<Vec<Addr>> = Item::new("addresses");
-
 
 pub fn next_block(block: &mut BlockInfo) {
     block.time = block.time.plus_seconds(5);
@@ -70,7 +68,7 @@ pub struct App<
     api: Api,
     storage: Storage,
     block: BlockInfo,
-    pub chain: Option<ChainData>
+    pub chain: Option<ChainData>,
 }
 
 fn no_init<BankT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>(
@@ -205,7 +203,7 @@ pub struct AppBuilder<Bank, Api, Storage, Custom, Wasm, Staking, Distr, Ibc, Gov
     distribution: Distr,
     ibc: Ibc,
     gov: Gov,
-    chain: Option<ChainData>
+    chain: Option<ChainData>,
 }
 
 impl Default
@@ -698,7 +696,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             api: self.api,
             block: self.block,
             storage: self.storage,
-            chain: self.chain
+            chain: self.chain,
         };
         app.init_modules(init_fn);
         app
@@ -814,21 +812,17 @@ where
     }
 
     /// Returns a new account address
-    pub fn next_address(&mut self) -> Addr{
-        let Self {
-            storage,
-            chain,
-            ..
-        } = self; 
+    pub fn next_address(&mut self) -> Addr {
+        let Self { storage, chain, .. } = self;
 
         let mut addresses = ADDRESSES.may_load(storage).unwrap().unwrap_or(vec![]);
 
-        let new_address = RealApi::new(&chain.clone().unwrap().bech32_prefix).next_address(addresses.len());
+        let new_address =
+            RealApi::new(&chain.clone().unwrap().bech32_prefix).next_address(addresses.len());
         addresses.push(new_address.clone());
         ADDRESSES.save(storage, &addresses).unwrap();
 
         new_address
-
     }
 
     /// Simple helper so we get access to all the QuerierWrapper helpers,
@@ -1064,13 +1058,11 @@ where
             QueryRequest::Staking(req) => self.staking.query(api, storage, &querier, block, req),
             QueryRequest::Ibc(req) => self.ibc.query(api, storage, &querier, block, req),
             // We add those custom local stargate queries to mock querying all the local storage in order to propagate for the in-contract-querier
-            QueryRequest::Stargate { path, data: _ } => {
-                match path.as_str(){
-                    STARGATE_ALL_WASM_QUERY_URL => Ok(to_binary(&self.wasm.query_all(storage)?)?),
-                    STARGATE_ALL_BANK_QUERY_URL => Ok(to_binary(&self.bank.query_all(storage)?)?),
-                    _=> unimplemented!()
-                }
-            }
+            QueryRequest::Stargate { path, data: _ } => match path.as_str() {
+                STARGATE_ALL_WASM_QUERY_URL => Ok(to_binary(&self.wasm.query_all(storage)?)?),
+                STARGATE_ALL_BANK_QUERY_URL => Ok(to_binary(&self.bank.query_all(storage)?)?),
+                _ => unimplemented!(),
+            },
             _ => unimplemented!(),
         }
     }
