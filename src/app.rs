@@ -1,4 +1,7 @@
+use crate::wasm_emulation::api::RealApi;
+use cw_storage_plus::Item;
 use cosmwasm_std::CustomMsg;
+use ibc_chain_registry::chain::ChainData;
 
 
 use std::fmt::{self, Debug};
@@ -28,6 +31,9 @@ use crate::wasm::{ContractData, Wasm, WasmKeeper, WasmSudo};
 
 use crate::wasm_emulation::input::STARGATE_ALL_BANK_QUERY_URL;
 use crate::wasm_emulation::input::STARGATE_ALL_WASM_QUERY_URL;
+
+const ADDRESSES: Item<Vec<Addr>> = Item::new("addresses");
+
 
 pub fn next_block(block: &mut BlockInfo) {
     block.time = block.time.plus_seconds(5);
@@ -64,6 +70,7 @@ pub struct App<
     api: Api,
     storage: Storage,
     block: BlockInfo,
+    pub chain: Option<ChainData>
 }
 
 fn no_init<BankT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>(
@@ -198,6 +205,7 @@ pub struct AppBuilder<Bank, Api, Storage, Custom, Wasm, Staking, Distr, Ibc, Gov
     distribution: Distr,
     ibc: Ibc,
     gov: Gov,
+    chain: Option<ChainData>
 }
 
 impl Default
@@ -244,6 +252,7 @@ impl
             distribution: DistributionKeeper::new(),
             ibc: FailingModule::new(),
             gov: FailingModule::new(),
+            chain: None,
         }
     }
 }
@@ -278,6 +287,7 @@ where
             distribution: DistributionKeeper::new(),
             ibc: FailingModule::new(),
             gov: FailingModule::new(),
+            chain: None,
         }
     }
 }
@@ -308,6 +318,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -322,6 +333,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -340,6 +352,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -354,6 +367,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -372,6 +386,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -386,6 +401,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -404,6 +420,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -418,6 +435,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -444,6 +462,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -458,6 +477,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -476,6 +496,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -490,6 +511,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -509,6 +531,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             bank,
             ibc,
             gov,
+            chain,
             ..
         } = self;
 
@@ -523,6 +546,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -544,6 +568,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             bank,
             distribution,
             gov,
+            chain,
             ..
         } = self;
 
@@ -558,6 +583,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             distribution,
             ibc,
             gov,
+            chain,
         }
     }
 
@@ -576,6 +602,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             bank,
             distribution,
             ibc,
+            chain,
             ..
         } = self;
 
@@ -589,6 +616,40 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             staking,
             distribution,
             ibc,
+            gov,
+            chain,
+        }
+    }
+    /// Sets the chain of the app
+    pub fn with_chain(
+        self,
+        chain: ChainData,
+    ) -> AppBuilder<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT> {
+        let AppBuilder {
+            wasm,
+            api,
+            storage,
+            custom,
+            block,
+            staking,
+            bank,
+            distribution,
+            ibc,
+            gov,
+            ..
+        } = self;
+
+        AppBuilder {
+            api,
+            block,
+            storage,
+            bank,
+            wasm,
+            custom,
+            staking,
+            distribution,
+            ibc,
+            chain: Some(chain),
             gov,
         }
     }
@@ -637,6 +698,7 @@ impl<BankT, ApiT, StorageT, CustomT, WasmT, StakingT, DistrT, IbcT, GovT>
             api: self.api,
             block: self.block,
             storage: self.storage,
+            chain: self.chain
         };
         app.init_modules(init_fn);
         app
@@ -751,6 +813,24 @@ where
         self.block.clone()
     }
 
+    /// Returns a new account address
+    pub fn next_address(&mut self) -> Addr{
+        let Self {
+            storage,
+            chain,
+            ..
+        } = self; 
+
+        let mut addresses = ADDRESSES.may_load(storage).unwrap().unwrap_or(vec![]);
+
+        let new_address = RealApi::new(&chain.clone().unwrap().bech32_prefix).next_address(addresses.len());
+        addresses.push(new_address.clone());
+        ADDRESSES.save(storage, &addresses).unwrap();
+
+        new_address
+
+    }
+
     /// Simple helper so we get access to all the QuerierWrapper helpers,
     /// eg. wrap().query_wasm_smart, query_all_balances, ...
     pub fn wrap(&self) -> QuerierWrapper<CustomT::QueryT> {
@@ -774,6 +854,7 @@ where
             router,
             api,
             storage,
+            ..
         } = self;
 
         transactional(&mut *storage, |write_cache, _| {
@@ -798,6 +879,7 @@ where
             router,
             api,
             storage,
+            ..
         } = self;
 
         transactional(&mut *storage, |write_cache, _| {
@@ -819,6 +901,7 @@ where
             router,
             api,
             storage,
+            ..
         } = self;
 
         transactional(&mut *storage, |write_cache, _| {

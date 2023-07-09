@@ -6,11 +6,11 @@ use cosmwasm_std::Addr;
 use std::str::FromStr;
 
 
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
 use cw_utils::NativeBalance;
 
 
-use cw_orch::prelude::queriers::Bank;
+use cw_orch_daemon::queriers::Bank;
 
 
 use std::collections::HashMap;

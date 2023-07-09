@@ -10,21 +10,19 @@ use cosmwasm_vm::call_reply;
 use cosmwasm_vm::call_migrate;
 use cosmwasm_vm::call_sudo;
 use crate::wasm_emulation::input::ReplyArgs;
-use crate::wasm_emulation::api::real_api::RealApi;
-use crate::wasm_emulation::api::MixedApi;
+use crate::wasm_emulation::api::RealApi;
 use crate::wasm_emulation::input::SerChainData;
 use cosmwasm_vm::Size;
 use cosmwasm_vm::InstanceOptions;
 use cosmwasm_vm::Instance;
 use cosmwasm_vm::Backend;
-use cosmwasm_vm::testing::MockApi;
 use crate::wasm_emulation::storage::DualStorage;
 use crate::wasm_emulation::query::MockQuerier;
 use crate::wasm_emulation::output::StorageChanges;
 use crate::wasm_emulation::input::get_querier_storage;
 use cosmwasm_std::CustomMsg;
-use cw_orch::prelude::queriers::DaemonQuerier;
-use cw_orch::prelude::queriers::CosmWasm;
+use cw_orch_daemon::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::CosmWasm;
 
 use cosmwasm_std::Empty;
 use cosmwasm_std::Order;
@@ -176,10 +174,7 @@ impl WasmContract{
         let address = function.get_address();
         let code = self.get_code()?;
 
-        let api = MixedApi{
-            real_api:RealApi::new(&chain.bech32_prefix),
-            mock_api: MockApi::default()
-        };
+        let api = RealApi::new(&chain.bech32_prefix);
 
         // We create the backend here from outside information;
         let backend = Backend {

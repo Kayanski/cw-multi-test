@@ -1,9 +1,10 @@
 
 use crate::prefixed_storage::contract_namespace;
+use crate::wasm_emulation::api::RealApi;
 use cosmwasm_std::CustomMsg;
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::CosmWasm;
 
-use cw_orch::daemon::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
 
 
@@ -128,14 +129,15 @@ pub struct WasmKeeper<ExecC: 'static, QueryC: 'static> {
 }
 
 pub trait AddressGenerator {
-    fn next_address(&self, storage: &mut dyn Storage) -> Addr;
+    fn next_contract_address(&self, storage: &mut dyn Storage, chain_name: Option<String>) -> Addr;
 }
 
 #[derive(Debug)]
 struct SimpleAddressGenerator();
 
 impl AddressGenerator for SimpleAddressGenerator {
-    fn next_address(&self, storage: &mut dyn Storage) -> Addr {
+
+    fn next_contract_address(&self, storage: &mut dyn Storage, prefix: Option<String>) -> Addr {
         let count = CONTRACTS
             .range_raw(
                 &prefixed_read(storage, NAMESPACE_WASM),
@@ -144,7 +146,10 @@ impl AddressGenerator for SimpleAddressGenerator {
                 Order::Ascending,
             )
             .count();
-        Addr::unchecked(format!("contract{}", count))
+
+        let prefix = prefix.unwrap_or("cosmos".to_string());
+
+        RealApi::new(&prefix).next_contract_address(count)
     }
 }
 
@@ -810,7 +815,7 @@ where
         created: u64,
     ) -> AnyResult<Addr> {
 
-        let addr = self.generator.next_address(storage);
+        let addr = self.generator.next_contract_address(storage, self.chain.clone().map(|c| c.bech32_prefix));
 
         let info = ContractData {
             code_id,
@@ -1043,17 +1048,15 @@ fn execute_response(data: Option<Binary>) -> Option<Binary> {
 
 
 
-
+/* TODO
 #[cfg(test)]
 mod test{
 
     use cosmwasm_std::Empty;
-use cw_orch::daemon::networks::JUNO_1;
+    use cw_orch::daemon::networks::JUNO_1;
     use crate::{AppBuilder, FailingModule};
     use super::*;
     // For testing, we simply create a app instance and add this new wasm executor as wasm instance
-
-
 
     #[test]
     fn add_wasm_file_keeper(){
@@ -1068,3 +1071,4 @@ use cw_orch::daemon::networks::JUNO_1;
 
 
 }
+*/

@@ -1,6 +1,6 @@
 use crate::wasm_emulation::input::SerChainData;
 use tonic::transport::Channel;
-use cw_orch::daemon::GrpcChannel;
+use cw_orch_daemon::GrpcChannel;
 use tokio::runtime::Runtime;
 use anyhow::Result as AnyResult;
 

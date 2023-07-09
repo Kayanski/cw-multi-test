@@ -2,14 +2,14 @@ use crate::wasm_emulation::input::get_querier_storage;
 use rustc_serialize::json::Json;
 use treediff::tools::Recorder;
 use treediff::diff;
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
 use crate::prefixed_storage::CONTRACT_STORAGE_PREFIX;
 use crate::prefixed_storage::decode_length;
 use crate::prefixed_storage::to_length_prefixed;
 use crate::wasm_emulation::channel::get_channel;
 use cosmwasm_std::Coin;
 use cosmwasm_std::Addr;
-use cw_orch::prelude::queriers::CosmWasm;
+use cw_orch_daemon::queriers::CosmWasm;
 use ibc_chain_registry::chain::ChainData;
 use serde::__private::from_utf8_lossy;
 
@@ -22,7 +22,8 @@ use anyhow::Result as AnyResult;
 
 
 pub struct StorageAnalyzer{
-	pub storage: QuerierStorage
+	pub storage: QuerierStorage,
+	pub chain: ChainData
 }
 
 
@@ -30,7 +31,8 @@ impl StorageAnalyzer{
 	pub fn new(app: &App) -> AnyResult<Self>{
 
 		Ok(Self{
-			storage: get_querier_storage(&app.wrap())?
+			storage: get_querier_storage(&app.wrap())?,
+			chain: app.chain.clone().unwrap()
 		})
 	}
 
@@ -79,9 +81,9 @@ impl StorageAnalyzer{
 			.collect()
 	}
 
-	pub fn compare_all_readable_contract_storage(&self, chain: ChainData){
+	pub fn compare_all_readable_contract_storage(&self){
 
-		let (rt, channel) = get_channel(chain).unwrap();
+		let (rt, channel) = get_channel(self.chain.clone()).unwrap();
 		let wasm_querier = CosmWasm::new(channel);
 		self.all_contract_storage()
 			.into_iter()
@@ -110,6 +112,10 @@ impl StorageAnalyzer{
 			        let changes: Vec<_> = d.calls.iter().filter(|change| !matches!(change, treediff::tools::ChangeType::Unchanged(..))).collect();
 
 			        log::info!("Storage at {}, and key {}, changed like so : {:?}",contract_addr, from_utf8_lossy(&key).to_string(), changes);
+				}else if let Ok(v) = from_utf8_lossy(&value).to_string().parse::<Json>(){
+					log::info!("Storage at {}, and key {}, is new : {}",contract_addr, from_utf8_lossy(&key).to_string(), v);
+				}else{
+					log::info!("Storage at {}, and key {}, is new : {:?}",contract_addr, from_utf8_lossy(&key).to_string(), value);
 				}
 			});
 	}

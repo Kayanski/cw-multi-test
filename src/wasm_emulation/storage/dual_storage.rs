@@ -14,10 +14,10 @@ use cosmwasm_std::Order;
 use cosmwasm_std::Record;
 use cosmwasm_vm::BackendResult;
 use cosmwasm_vm::Storage;
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
 
 
-use cw_orch::prelude::queriers::CosmWasm;
+use cw_orch_daemon::queriers::CosmWasm;
 
 
 

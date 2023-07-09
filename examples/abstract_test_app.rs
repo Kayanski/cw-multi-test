@@ -1,4 +1,5 @@
 
+use abstract_core::ans_host::AssetsResponse;
 use cosmwasm_std::Timestamp;
 use cw_orch::daemon::queriers::Node;
 use cosmwasm_std::coins;
@@ -6,12 +7,12 @@ use cosmwasm_std::Uint128;
 use abstract_core::objects::pool_id::PoolAddressBase;
 use abstract_core::objects::PoolMetadata;
 use tokio::runtime::Runtime;
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::DaemonQuerier;
 
 use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
 use abstract_core::adapter::AuthorizedAddressesResponse;
 use abstract_core::adapter::BaseQueryMsg;
-use abstract_core::ans_host::QueryMsgFns;
+
 use abstract_core::objects::AnsAsset;
 use abstract_core::objects::AssetEntry;
 use abstract_core::objects::module_reference::ModuleReference;
@@ -20,11 +21,12 @@ use abstract_dex_adapter::msg::{DexExecuteMsg, DexInstantiateMsg, DexAction};
 use abstract_core::adapter::BaseInstantiateMsg;
 use abstract_dex_adapter::msg::InstantiateMsg;
 use cosmwasm_std::Decimal;
-use cw_orch::prelude::queriers::CosmWasm;
+use cw_orch_daemon::CosmWasm;
 use std::path::Path;
 use cw_multi_test::wasm_emulation::contract::WasmContract;
 use abstract_core::objects::module::Module;
 
+use cw_asset::AssetInfo;
 
 use abstract_core::version_control::{self};
 
@@ -44,7 +46,7 @@ use cw_orch::daemon::Daemon;
 use cw_orch::deploy::Deploy;
 use abstract_interface::Abstract;
 
-use cw_orch::prelude::ContractInstance;
+use cw_orch_daemon::prelude::ContractInstance;
 use dotenv::dotenv;
 
 use abstract_core::manager::{ExecuteMsg};
@@ -190,7 +192,7 @@ fn main(){
 */
     log::info!("Updated authorized address on the Dex adapter");
     /* Query to verify that the manager was authorized to execute on the adapter */
-    let addresses: AuthorizedAddressesResponse = app.wrap().query_wasm_smart(dex_addr.clone(), &abstract_dex_adapter::msg::QueryMsg::Base(BaseQueryMsg::AuthorizedAddresses{
+    let addresses: AuthorizedAddressesResponse = app.wrap().query_wasm_smart(dex_addr, &abstract_dex_adapter::msg::QueryMsg::Base(BaseQueryMsg::AuthorizedAddresses{
     	proxy_address: proxy.address().unwrap().to_string()
     })).unwrap();
     log::info!("AuthorizedAddresses on dex {:?}", addresses);
@@ -210,6 +212,14 @@ fn main(){
      amount: coins(100_000u128, "ujuno") 
  	})).unwrap();
 
+    // We get the balances (for asserting)
+    let usdc: AssetsResponse = app.wrap().query_wasm_smart(abstract_.ans_host.address().unwrap(), &abstract_core::ans_host::QueryMsg::Assets { names: vec!["axelar>usdc".to_string()] }).unwrap();
+    let usdc = match &usdc.assets[0].1{
+        AssetInfo::Native(denom)=> denom,
+        _=> panic!("Expected native denom")
+    };
+    let old_balance = app.wrap().query_balance(proxy.address().unwrap(), "ujuno").unwrap();
+    let old_usdc_balance = app.wrap().query_balance(proxy.address().unwrap(), usdc).unwrap();
 
     // We test a swap interaction
     app.execute_contract(Addr::unchecked(owner), manager.address().unwrap(),&ExecuteMsg::ExecOnModule { module_id: "abstract:dex".to_string(), 
@@ -229,5 +239,12 @@ fn main(){
 		)).unwrap()}, &[]).unwrap();
     log::info!("Execute the swap");
 
+
+    // We get the juno balance (should be lower)
+    let new_balance = app.wrap().query_balance(proxy.address().unwrap(), "ujuno").unwrap();
+    assert_eq!(old_balance.amount - new_balance.amount, Uint128::from(100_000u128));
+
+    let new_usdc_balance = app.wrap().query_balance(proxy.address().unwrap(), usdc).unwrap();
+    assert!(old_usdc_balance.amount < new_usdc_balance.amount);
 
 }

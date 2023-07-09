@@ -32,7 +32,8 @@ derivative = "2"
 # We specify them to tighten their version requirements so that builds with `-Zminimal-versions` work.
 # Once we bump `cosmwasm-*` deps to a version after `1.1.5`, we can remove these.
 k256 = { version = "0.11.1", features = ["ecdsa"] }
-cw-orch = {version="0.13.1", features=["daemon"]}
+# cw-orch-daemon = {version="0.13.1"}
+cw-orch-daemon = { git="https://github.com/AbstractSDK/cw-orchestrator", branch="update/separate-daemon"}
 tokio = "1.28.2"
 ibc-chain-registry = "0.24.1"
 cosmwasm-vm = { version = "1.2", features = ["staking", "stargate", "iterator"] }
@@ -61,6 +62,7 @@ abstract-core = {verion="0.16.1", git="https://github.com/AbstractSDK/contracts.
 dotenv = "0.15.0"
 abstract-dex-adapter = { git = "https://github.com/AbstractSDK/adapters.git", default-features = false }
 hex = "0.4.3"
+cw-asset = "3.0.0"
 
 
 [dev-dependencies]

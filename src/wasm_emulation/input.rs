@@ -12,7 +12,6 @@ use cosmwasm_std::Binary;
 use cosmwasm_std::CustomQuery;
 use cosmwasm_std::{Env, MessageInfo, Reply};
 
-use cw_orch::daemon::ChainInfo;
 use cw_utils::NativeBalance;
 use ibc_chain_registry::chain::Apis;
 use ibc_chain_registry::chain::ChainData;
@@ -48,14 +47,6 @@ impl From<ChainData> for SerChainData{
 		}
 	}
 }
-
-impl From<ChainInfo<'_>> for SerChainData{
-	fn from(c: ChainInfo) -> SerChainData{
-		let data: ChainData = c.into();
-		data.into()
-	}
-}
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WasmStorage{

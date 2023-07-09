@@ -1,7 +1,8 @@
+use ibc_chain_registry::chain::ChainData;
 use std::path::Path;
 
 
-use cosmwasm_std::Addr;
+
 use cosmwasm_std::Empty;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
@@ -12,7 +13,7 @@ use cw_multi_test::AppBuilder;
 use cw_multi_test::wasm_emulation::storage::analyzer::StorageAnalyzer;
 use cw_multi_test::WasmKeeper;
 
-use cw_orch::daemon::networks::PHOENIX_1;
+use cw_orch_daemon::networks::PHOENIX_1;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -64,20 +65,23 @@ pub struct MigrateMsg {
 
 pub fn main(){
 	env_logger::init();
+
+    let chain: ChainData = PHOENIX_1.into();
+
     let mut wasm = WasmKeeper::<Empty, Empty>::new();
-    wasm.set_chain(PHOENIX_1.into());
+    wasm.set_chain(chain.clone());
 
 	// First we instantiate a new app
     let app = AppBuilder::default()
+        .with_chain(chain.clone())
     	.with_wasm::<FailingModule<Empty, Empty, Empty>, _>(wasm);
     let mut app = app.build(| _,_,_| {});
 
     // Then we send a message to the blockchain through the app
-	let sender = "terra17c6ts8grcfrgquhj3haclg44le8s7qkx6l2yx33acguxhpf000xqhnl3je";
-    let sender = Addr::unchecked(sender);
+	let sender = app.next_address();
 
     let code = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts").join("counter_contract.wasm")).unwrap();
-    let counter_contract = WasmContract::new_local(code, PHOENIX_1);
+    let counter_contract = WasmContract::new_local(code, chain);
 
     let code_id = app.store_code(counter_contract);
 
@@ -110,6 +114,6 @@ pub fn main(){
     log::info!("analysis, wasm2 {:?}", analysis.get_contract_storage(counter2.clone()));
     log::info!("analysis, wasm2 {:?}", analysis.readable_storage(counter2));
     log::info!("All contracts storage {:?}", analysis.all_readable_contract_storage());
-    analysis.compare_all_readable_contract_storage(PHOENIX_1.into());
+    analysis.compare_all_readable_contract_storage();
 
 }

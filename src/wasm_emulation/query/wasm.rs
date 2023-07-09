@@ -10,12 +10,12 @@ use crate::wasm_emulation::output::WasmOutput;
 use crate::wasm_emulation::output::WasmRunnerOutput;
 use cosmwasm_std::testing::mock_env;
 use cosmwasm_vm::GasInfo;
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
 use crate::wasm_emulation::contract::WasmContract;
 
 use cosmwasm_std::{Empty, ContractResult};
 use cosmwasm_std::{Addr, SystemResult, to_binary, ContractInfoResponse};
-use cw_orch::prelude::queriers::CosmWasm;
+use cw_orch_daemon::queriers::CosmWasm;
 
 
 use cosmwasm_std::WasmQuery;

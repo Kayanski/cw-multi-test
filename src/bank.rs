@@ -1,7 +1,7 @@
 use crate::wasm_emulation::input::BankStorage;
 use std::str::FromStr;
 use cosmwasm_std::{Uint128, Order};
-use cw_orch::prelude::queriers::DaemonQuerier;
+use cw_orch_daemon::queriers::DaemonQuerier;
 
 use ibc_chain_registry::chain::ChainData;
 
@@ -82,7 +82,7 @@ impl BankKeeper {
         // If there is no balance present, we query it on the distant chain
         if !BALANCES.has(bank_storage, account){
             let (rt, channel) = get_channel(self.chain.clone().unwrap())?;
-            let querier = cw_orch::daemon::queriers::Bank::new(channel);
+            let querier = cw_orch_daemon::queriers::Bank::new(channel);
             let distant_amounts: Vec<Coin> = rt
                 .block_on(querier.balance(account, None))
                 .map(|result| result
